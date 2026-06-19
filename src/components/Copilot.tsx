@@ -10,6 +10,7 @@ export function Copilot(props: {
   trackId: string;
   jd: string;
   resume: string;
+  instruction: string;
 }) {
   const [msgs, setMsgs] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -36,6 +37,7 @@ export function Copilot(props: {
           track: trackById(props.trackId),
           jd: props.jd,
           resume: props.resume,
+          instruction: props.instruction,
         }),
         messages: next,
         maxTokens: 1500,

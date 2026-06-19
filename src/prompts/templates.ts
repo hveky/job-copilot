@@ -1,13 +1,22 @@
 // Prompt 模板:B 线内容包生成 + 回复助手系统提示。
 import type { Track } from "./tracks";
 
+/** 把主控指令拼到 system 最前面(CLAUDE.md 式注入)。 */
+function withInstruction(instruction: string | undefined, base: string): string {
+  const ins = instruction?.trim();
+  return ins ? `${ins}\n\n---\n${base}` : base;
+}
+
 /** B 线:JD → 完整应试内容包(对应工作区五职责)。输出结构化 Markdown。 */
-export function contentPackSystem(): string {
-  return [
-    "你是一名顶级求职教练 + 行业面试官。用户给你一段岗位 JD、目标赛道、和他的简历。",
-    "你的任务是产出一份可直接拿去备战的「应试内容包」,中文,结构化 Markdown。",
-    "务实、具体、可操作,拒绝空话套话。不要编造用户没有的经历;简历里没有的能力不要替他声称。",
-  ].join("\n");
+export function contentPackSystem(instruction?: string): string {
+  return withInstruction(
+    instruction,
+    [
+      "你是一名顶级求职教练 + 行业面试官。用户给你一段岗位 JD、目标赛道、和他的简历。",
+      "你的任务是产出一份可直接拿去备战的「应试内容包」,中文,结构化 Markdown。",
+      "务实、具体、可操作,拒绝空话套话。不要编造用户没有的经历;简历里没有的能力不要替他声称。",
+    ].join("\n"),
+  );
 }
 
 export function contentPackUser(args: {
@@ -55,6 +64,7 @@ export function copilotSystem(ctx: {
   track?: Track;
   jd?: string;
   resume?: string;
+  instruction?: string;
 }): string {
   const lines = [
     "你是求职沟通助手,帮用户在 BOSS 直聘上回复 HR 的消息。",
@@ -66,5 +76,5 @@ export function copilotSystem(ctx: {
   if (ctx.jd?.trim()) lines.push(`\n当前岗位 JD 摘要:\n${ctx.jd.trim().slice(0, 1200)}`);
   if (ctx.resume?.trim())
     lines.push(`\n用户简历要点:\n${ctx.resume.trim().slice(0, 1200)}`);
-  return lines.join("\n");
+  return withInstruction(ctx.instruction, lines.join("\n"));
 }

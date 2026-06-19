@@ -11,6 +11,7 @@ export function ContentPanel(props: {
   jd: string;
   onJdChange: (jd: string) => void;
   resume: string;
+  instruction: string;
 }) {
   const [content, setContent] = useState("");
   const [busy, setBusy] = useState(false);
@@ -32,7 +33,7 @@ export function ContentPanel(props: {
     try {
       await chat(props.gateway, {
         tier,
-        system: contentPackSystem(),
+        system: contentPackSystem(props.instruction),
         messages: [
           {
             role: "user",

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { ContentPanel } from "./components/ContentPanel";
 import { Copilot } from "./components/Copilot";
+import { InstructionPanel } from "./components/InstructionPanel";
 import { SettingsModal } from "./components/Settings";
 import {
   loadSettings,
@@ -14,6 +15,7 @@ export function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [trackId, setTrackId] = useState("ai");
   const [jd, setJd] = useState("");
+  const [sbTab, setSbTab] = useState<"copilot" | "instruction">("copilot");
 
   const gateway = useMemo(() => toGatewayConfig(settings), [settings]);
   const hasKey = !!settings.dsKey;
@@ -22,6 +24,12 @@ export function App() {
     setSettings(s);
     saveSettings(s);
     setShowSettings(false);
+  }
+
+  function setInstruction(instruction: string) {
+    const s = { ...settings, instruction };
+    setSettings(s);
+    saveSettings(s);
   }
 
   return (
@@ -49,19 +57,39 @@ export function App() {
             jd={jd}
             onJdChange={setJd}
             resume={settings.resume}
+            instruction={settings.instruction}
           />
         </main>
 
         <aside className="sidebar">
           <div className="sb-tabs">
-            <button className="active">回复助手</button>
+            <button
+              className={sbTab === "copilot" ? "active" : ""}
+              onClick={() => setSbTab("copilot")}
+            >
+              回复助手
+            </button>
+            <button
+              className={sbTab === "instruction" ? "active" : ""}
+              onClick={() => setSbTab("instruction")}
+            >
+              Instruction
+            </button>
           </div>
-          <Copilot
-            gateway={gateway}
-            trackId={trackId}
-            jd={jd}
-            resume={settings.resume}
-          />
+          {sbTab === "copilot" ? (
+            <Copilot
+              gateway={gateway}
+              trackId={trackId}
+              jd={jd}
+              resume={settings.resume}
+              instruction={settings.instruction}
+            />
+          ) : (
+            <InstructionPanel
+              value={settings.instruction}
+              onChange={setInstruction}
+            />
+          )}
         </aside>
       </div>
 

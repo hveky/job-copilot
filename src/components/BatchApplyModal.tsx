@@ -68,6 +68,7 @@ export function BatchApplyModal(props: {
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
       if (!r.include || r.status !== "pending" || r.greeting.trim()) continue;
+      set(i, { error: undefined });
       try {
         let g = "";
         await chat(props.gateway, {
@@ -89,6 +90,7 @@ export function BatchApplyModal(props: {
             set(i, { greeting: g });
           },
         });
+        if (!g.trim()) set(i, { error: "生成为空,点「生成招呼语」重试" });
       } catch (e) {
         set(i, { error: e instanceof GatewayError ? e.message : String(e) });
       }

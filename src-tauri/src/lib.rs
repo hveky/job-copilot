@@ -52,15 +52,14 @@ const SCRAPE_JD_JS: &str = r#"(function(){
   go();
 })();"#;
 
-// 打招呼:点详情页「立即沟通」(等按钮出现再点)。
+// 打招呼流程:点「立即沟通」→ 处理"已向BOSS发送消息"弹窗点「继续沟通」(跳转聊天页)。
 const CLICK_STARTCHAT_JS: &str = r#"(function(){
+  function clickText(s){var e=document.querySelectorAll('a,button,span,div');for(var i=0;i<e.length;i++){if(e[i].innerText&&e[i].innerText.trim()===s){e[i].click();return true;}}return false;}
+  var b=document.querySelector('a.btn-startchat, .btn-startchat, a[ka="job-detail-startchat"]');
+  if(b){b.click();} else { clickText('立即沟通'); }
   var t=0;
-  function go(){
-    var b=document.querySelector('a.btn-startchat, .btn-startchat, a[ka="job-detail-startchat"], .op-btn-chat, .btn-chat');
-    if(b){b.click();return;}
-    if(t<25){t++;setTimeout(go,300);}
-  }
-  go();
+  function cont(){ if(clickText('继续沟通'))return; if(t<25){t++;setTimeout(cont,400);} }
+  setTimeout(cont, 800);
 })();"#;
 
 // 追发定制招呼语:在主文档+同源 iframe 里找 contenteditable 输入框,
@@ -175,9 +174,9 @@ async fn boss_apply(
     boss.eval(&format!("window.location.href = {:?};", url))
         .map_err(|e| e.to_string())?;
     tokio::time::sleep(Duration::from_millis(1800)).await;
-    // 2. 点「立即沟通」(可能跳转到聊天页)
+    // 2. 点「立即沟通」+ 弹窗「继续沟通」(跳转聊天页),留足跳转时间
     boss.eval(CLICK_STARTCHAT_JS).map_err(|e| e.to_string())?;
-    tokio::time::sleep(Duration::from_millis(3500)).await;
+    tokio::time::sleep(Duration::from_millis(5000)).await;
     // 3. 追发定制招呼语(message 用 serde_json 安全注入)
     let msg_lit = serde_json::to_string(&message).map_err(|e| e.to_string())?;
     let send_js = SEND_MSG_JS.replacen("__MSG__", &msg_lit, 1);

@@ -53,11 +53,13 @@ const SCRAPE_JD_JS: &str = r#"(function(){
 })();"#;
 
 // 打招呼流程:点「立即沟通」→ 处理"已向BOSS发送消息"弹窗点「继续沟通」(可能在 iframe 内)。
+// 用完整鼠标事件序列触发,并优先点 button/a 本身(裸 .click() 点外层 div 无效)。
 const CLICK_STARTCHAT_JS: &str = r#"(function(){
-  function allDocs(){var a=[document];document.querySelectorAll('iframe').forEach(function(f){try{if(f.contentDocument)a.push(f.contentDocument);}catch(e){}});return a;}
-  function clickText(s){var ds=allDocs();for(var k=0;k<ds.length;k++){var e=ds[k].querySelectorAll('a,button,span,div');for(var i=0;i<e.length;i++){if(e[i].innerText&&e[i].innerText.trim()===s){e[i].click();return true;}}}return false;}
+  function docs(){var a=[document];document.querySelectorAll('iframe').forEach(function(f){try{if(f.contentDocument)a.push(f.contentDocument);}catch(e){}});return a;}
+  function fire(el){try{['pointerdown','mousedown','pointerup','mouseup','click'].forEach(function(t){el.dispatchEvent(new MouseEvent(t,{bubbles:true,cancelable:true,view:window}));});}catch(e){try{el.click();}catch(_){}}}
+  function clickText(s){var ds=docs(),sels=['button','a','span','div'];for(var p=0;p<sels.length;p++){for(var k=0;k<ds.length;k++){var e=ds[k].querySelectorAll(sels[p]);for(var i=0;i<e.length;i++){if(e[i].innerText&&e[i].innerText.trim()===s){var tg=(e[i].closest&&e[i].closest('button,a'))||e[i];fire(tg);return true;}}}}return false;}
   var b=document.querySelector('a.btn-startchat, .btn-startchat, a[ka="job-detail-startchat"]');
-  if(b){b.click();} else { clickText('立即沟通'); }
+  if(b){fire(b);} else { clickText('立即沟通'); }
   var t=0;
   function cont(){ if(clickText('继续沟通'))return; if(t<30){t++;setTimeout(cont,400);} }
   setTimeout(cont, 1000);
@@ -69,7 +71,8 @@ const SEND_MSG_JS: &str = r#"(function(){
   var MSG=__MSG__; var tries=0;
   function emit(ev,d){try{window.__TAURI__.event.emit(ev,d);}catch(e){}}
   function docs(){var a=[document];document.querySelectorAll('iframe').forEach(function(f){try{if(f.contentDocument)a.push(f.contentDocument);}catch(e){}});return a;}
-  function clickText(s){var ds=docs();for(var k=0;k<ds.length;k++){var e=ds[k].querySelectorAll('a,button,span,div');for(var i=0;i<e.length;i++){if(e[i].innerText&&e[i].innerText.trim()===s){e[i].click();return true;}}}return false;}
+  function fire(el){try{['pointerdown','mousedown','pointerup','mouseup','click'].forEach(function(t){el.dispatchEvent(new MouseEvent(t,{bubbles:true,cancelable:true,view:window}));});}catch(e){try{el.click();}catch(_){}}}
+  function clickText(s){var ds=docs(),sels=['button','a','span','div'];for(var p=0;p<sels.length;p++){for(var k=0;k<ds.length;k++){var e=ds[k].querySelectorAll(sels[p]);for(var i=0;i<e.length;i++){if(e[i].innerText&&e[i].innerText.trim()===s){var tg=(e[i].closest&&e[i].closest('button,a'))||e[i];fire(tg);return true;}}}}return false;}
   function findInput(){
     var sels=['div.chat-input[contenteditable=true]','div.chat-input[contenteditable]','.chat-input[contenteditable]','.chat-editor [contenteditable=true]','[contenteditable=true]'];
     var ds=docs();

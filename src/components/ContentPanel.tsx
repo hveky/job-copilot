@@ -15,6 +15,7 @@ export function ContentPanel(props: {
 }) {
   const [content, setContent] = useState("");
   const [busy, setBusy] = useState(false);
+  const [reasoning, setReasoning] = useState(false);
   const [err, setErr] = useState("");
   const [tier, setTier] = useState<Tier>("deep");
   const abortRef = useRef<AbortController | null>(null);
@@ -26,6 +27,7 @@ export function ContentPanel(props: {
     }
     setErr("");
     setContent("");
+    setReasoning(false);
     setBusy(true);
     const ac = new AbortController();
     abortRef.current = ac;
@@ -46,7 +48,11 @@ export function ContentPanel(props: {
         ],
         maxTokens: 8000,
         signal: ac.signal,
-        onDelta: (t) => setContent((c) => c + t),
+        onThinking: () => setReasoning(true),
+        onDelta: (t) => {
+          setReasoning(false);
+          setContent((c) => c + t);
+        },
       });
     } catch (e) {
       if ((e as Error).name === "AbortError") {
@@ -146,6 +152,11 @@ export function ContentPanel(props: {
             </div>
           )}
         </div>
+        {busy && !content && (
+          <div className="hint" style={{ marginTop: 10 }}>
+            {reasoning ? "🧠 模型推理中…(深度档会先思考再下笔)" : "连接中…"}
+          </div>
+        )}
         <div
           className={"content" + (content ? "" : " empty")}
           style={{ marginTop: 10 }}

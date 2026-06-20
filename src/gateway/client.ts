@@ -67,13 +67,14 @@ export async function chat(
     );
   }
 
-  return await consumeAnthropicSSE(resp.body, req.onDelta);
+  return await consumeAnthropicSSE(resp.body, req.onDelta, req.onThinking);
 }
 
-/** 解析 Anthropic 风格 SSE,累积 text 增量。DeepSeek /anthropic 端点同构。 */
+/** 解析 Anthropic 风格 SSE,累积 text 增量。DeepSeek /anthropic 端点同构(含 thinking_delta)。 */
 async function consumeAnthropicSSE(
   stream: ReadableStream<Uint8Array>,
   onDelta?: (t: string) => void,
+  onThinking?: (t: string) => void,
 ): Promise<string> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
@@ -99,14 +100,17 @@ async function consumeAnthropicSSE(
       } catch {
         continue;
       }
-      // content_block_delta -> delta.text(text_delta)
-      if (
-        evt.type === "content_block_delta" &&
-        evt.delta?.type === "text_delta" &&
-        typeof evt.delta.text === "string"
-      ) {
-        full += evt.delta.text;
-        onDelta?.(evt.delta.text);
+      // content_block_delta -> 正文 text_delta / 推理 thinking_delta
+      if (evt.type === "content_block_delta") {
+        if (evt.delta?.type === "text_delta" && typeof evt.delta.text === "string") {
+          full += evt.delta.text;
+          onDelta?.(evt.delta.text);
+        } else if (
+          evt.delta?.type === "thinking_delta" &&
+          typeof evt.delta.thinking === "string"
+        ) {
+          onThinking?.(evt.delta.thinking);
+        }
       }
       if (evt.type === "error") {
         throw new GatewayError(evt.error?.message ?? "流式错误");

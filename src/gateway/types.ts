@@ -33,7 +33,9 @@ export interface ChatRequest {
   system?: string;
   messages: ChatMessage[];
   maxTokens?: number;
-  /** 增量回调:每段新文本触发一次。 */
+  /** 增量回调:每段新正文触发一次。 */
   onDelta?: (text: string) => void;
+  /** 推理模型(如 deepseek-v4-pro)思考阶段的增量,可用来显示「思考中」。 */
+  onThinking?: (text: string) => void;
   signal?: AbortSignal;
 }

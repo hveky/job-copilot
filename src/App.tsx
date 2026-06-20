@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ContentPanel } from "./components/ContentPanel";
 import { Copilot } from "./components/Copilot";
 import { InstructionPanel } from "./components/InstructionPanel";
@@ -22,6 +22,10 @@ export function App() {
 
   const gateway = useMemo(() => toGatewayConfig(settings), [settings]);
   const hasKey = !!settings.dsKey;
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = settings.theme;
+  }, [settings.theme]);
 
   function patch(p: Partial<Settings>) {
     setSettings((cur) => {
@@ -48,6 +52,15 @@ export function App() {
             ⚠ 未配置 DeepSeek Key
           </span>
         )}
+        <button
+          className="small"
+          title="切换浅色 / 深色"
+          onClick={() =>
+            patch({ theme: settings.theme === "dark" ? "light" : "dark" })
+          }
+        >
+          {settings.theme === "dark" ? "浅色" : "深色"}
+        </button>
         <button className="small" onClick={() => setShowSettings(true)}>
           设置
         </button>

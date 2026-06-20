@@ -11,6 +11,7 @@ export interface Settings {
   targetJobs: string[]; // 用户确认的目标岗位关键词集合
   activeJob: string; // 当前用于定位的岗位(targetJobs 之一)
   city: string; // 选中城市(label),码见 data/cities.ts
+  theme: "light" | "dark"; // 界面主题
 }
 
 const KEY = "qzc.settings.v1";
@@ -33,6 +34,7 @@ export const DEFAULT_SETTINGS: Settings = {
   targetJobs: ["AI / Agent"],
   activeJob: "AI / Agent",
   city: "广州",
+  theme: "light",
 };
 
 export function loadSettings(): Settings {

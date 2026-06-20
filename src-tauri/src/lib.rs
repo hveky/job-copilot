@@ -52,6 +52,35 @@ const SCRAPE_JD_JS: &str = r#"(function(){
   go();
 })();"#;
 
+// 打招呼:点详情页「立即沟通」。
+const CLICK_STARTCHAT_JS: &str = r#"(function(){
+  try{
+    var b=document.querySelector('a.btn-startchat, .btn-startchat, a[ka="job-detail-startchat"]');
+    if(b){b.click();}
+  }catch(e){}
+})();"#;
+
+// 追发定制招呼语:contenteditable 的 chat-input + 拿父级 __vue__ 调 handleSubmit。
+// __MSG__ 由 Rust 用 serde_json 注入为安全字符串字面量。
+const SEND_MSG_JS: &str = r#"(function(){
+  var MSG=__MSG__; var tries=0;
+  function emit(ev,d){try{window.__TAURI__.event.emit(ev,d);}catch(e){}}
+  function go(){
+    try{
+      if(!window.__TAURI__||!window.__TAURI__.event){if(tries<40){tries++;return setTimeout(go,400);}return;}
+      var ce=document.querySelector('div.chat-input[contenteditable=true], div.chat-input[contenteditable]');
+      if(!ce){if(tries<40){tries++;return setTimeout(go,500);}emit('boss-error','未出现聊天输入框(可能已沟通过、需验证码,或页面结构变化)');return;}
+      ce.focus();
+      document.execCommand('insertText',false,MSG);
+      var n=ce; while(n&&!n.__vue__) n=n.parentElement;
+      if(!n||!n.__vue__){emit('boss-error','找不到 chat-input 的 __vue__ 实例(BOSS 改版?)');return;}
+      n.__vue__.enableSubmit=true; n.__vue__.handleSubmit();
+      setTimeout(function(){emit('boss-apply-done',{ok:!ce.innerText.trim()});},900);
+    }catch(e){emit('boss-error','send: '+String(e));}
+  }
+  go();
+})();"#;
+
 fn boss_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, String> {
     app.get_webview_window("boss")
         .ok_or_else(|| "BOSS 窗口未打开,请先点「打开 / 登录 BOSS」并登录".to_string())
@@ -119,6 +148,30 @@ async fn boss_fetch_jd(app: tauri::AppHandle, url: String) -> Result<String, Str
     navigate_scrape(&app, url, SCRAPE_JD_JS, "boss-jd").await
 }
 
+/// 投递单个岗位:导航详情 → 点立即沟通(打招呼)→ 追发定制招呼语 message。
+/// 必须由用户审核后调用。返回 boss-apply-done(含 ok:是否清空=发送成功)。
+#[tauri::command]
+async fn boss_apply(
+    app: tauri::AppHandle,
+    url: String,
+    message: String,
+) -> Result<String, String> {
+    let boss = boss_window(&app)?;
+    // 1. 导航到详情页
+    boss.eval(&format!("window.location.href = {:?};", url))
+        .map_err(|e| e.to_string())?;
+    tokio::time::sleep(Duration::from_millis(1800)).await;
+    // 2. 点「立即沟通」(可能跳转到聊天页)
+    boss.eval(CLICK_STARTCHAT_JS).map_err(|e| e.to_string())?;
+    tokio::time::sleep(Duration::from_millis(2500)).await;
+    // 3. 追发定制招呼语(message 用 serde_json 安全注入)
+    let msg_lit = serde_json::to_string(&message).map_err(|e| e.to_string())?;
+    let send_js = SEND_MSG_JS.replacen("__MSG__", &msg_lit, 1);
+    boss.eval(&send_js).map_err(|e| e.to_string())?;
+    // 4. 等结果
+    wait_event(&app, "boss-apply-done").await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -132,7 +185,11 @@ pub fn run() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![boss_search, boss_fetch_jd])
+        .invoke_handler(tauri::generate_handler![
+            boss_search,
+            boss_fetch_jd,
+            boss_apply
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

@@ -67,3 +67,17 @@ export async function bossFetchJd(url: string): Promise<BossJd> {
   const json = await invoke<string>("boss_fetch_jd", { url });
   return JSON.parse(json) as BossJd;
 }
+
+/** 投递:打招呼 + 追发定制招呼语。必须用户审核后调用。 */
+export async function bossApply(
+  url: string,
+  message: string,
+): Promise<{ ok: boolean }> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  const json = await invoke<string>("boss_apply", { url, message });
+  try {
+    return JSON.parse(json) as { ok: boolean };
+  } catch {
+    return { ok: true };
+  }
+}

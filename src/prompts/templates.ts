@@ -96,3 +96,25 @@ export function recommendUser(args: { resume: string; wish?: string }): string {
     : "";
   return `# 用户简历\n${resume}${wish}`;
 }
+
+/** BOSS 追发的定制招呼语(打招呼后第一句自我介绍)。 */
+export function greetingSystem(instruction?: string): string {
+  return withInstruction(
+    instruction,
+    [
+      "你以求职者本人的口吻,写一段在 BOSS 直聘上向 HR 追发的开场白(打招呼后的第一句自我介绍)。",
+      "结合岗位 JD 和我的简历,1-3 句话讲清我为什么匹配,突出最相关的 1-2 个亮点。",
+      "口语、礼貌、自信但不油腻,可直接发送。不要堆「您好我看到贵公司」这类空话开头,直接给价值。",
+      "不要编造简历里没有的能力。只输出这段话本身,不要任何解释或引号。",
+    ].join("\n"),
+  );
+}
+
+export function greetingUser(args: {
+  job: string;
+  jd: string;
+  resume: string;
+}): string {
+  const resume = args.resume.trim() || "(简历为空,请基于岗位写通用但真诚的开场白)";
+  return `# 目标岗位\n${args.job} —— ${biasForJob(args.job)}\n\n# 岗位 JD\n${args.jd.trim()}\n\n# 我的简历\n${resume}`;
+}

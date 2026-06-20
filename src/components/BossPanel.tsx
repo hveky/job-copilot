@@ -7,11 +7,16 @@ import {
   type BossJob,
 } from "../lib/tauri";
 import { cityCode } from "../data/cities";
+import { ApplyModal } from "./ApplyModal";
+import type { GatewayConfig } from "../gateway/types";
 
-// BOSS 投递台(Phase B step1-2):打开内置 BOSS 浏览器登录 → 按岗位+城市抓 JD。
+// BOSS 投递台(Phase B step1-3):登录 → 抓 JD → 审核后半自动投递。
 export function BossPanel(props: {
+  gateway: GatewayConfig;
   job: string;
   city: string;
+  resume: string;
+  instruction: string;
   onPickJd: (jd: string) => void;
 }) {
   const [err, setErr] = useState("");
@@ -19,6 +24,8 @@ export function BossPanel(props: {
   const [searching, setSearching] = useState(false);
   const [fetching, setFetching] = useState("");
   const [jobs, setJobs] = useState<BossJob[]>([]);
+  const [applyJob, setApplyJob] = useState<BossJob | null>(null);
+  const [appliedIds, setAppliedIds] = useState<Set<string>>(new Set());
   const desktop = isDesktop();
 
   async function open() {
@@ -111,15 +118,37 @@ export function BossPanel(props: {
                 </div>
               </div>
               <button
-                className="small"
+                className="small ghost"
                 disabled={!!fetching}
                 onClick={() => pick(j)}
+                title="抓 JD 灌进生成器"
               >
                 {fetching === (j.id || j.href) ? "抓取中…" : "用这个"}
+              </button>
+              <button
+                className="small"
+                onClick={() => setApplyJob(j)}
+                title="生成招呼语 → 审核 → 投递"
+              >
+                {appliedIds.has(j.id || j.href) ? "已投 ·再投" : "投递"}
               </button>
             </div>
           ))}
         </div>
+      )}
+
+      {applyJob && (
+        <ApplyModal
+          gateway={props.gateway}
+          jobLabel={props.job}
+          bossJob={applyJob}
+          resume={props.resume}
+          instruction={props.instruction}
+          onClose={() => setApplyJob(null)}
+          onApplied={(id) =>
+            setAppliedIds((s) => new Set(s).add(id))
+          }
+        />
       )}
     </div>
   );

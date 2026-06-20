@@ -87,8 +87,11 @@ export function App() {
             onCityChange={(city) => patch({ city })}
           />
           <BossPanel
+            gateway={gateway}
             job={settings.activeJob}
             city={settings.city}
+            resume={settings.resume}
+            instruction={settings.instruction}
             onPickJd={setJd}
           />
           <ContentPanel

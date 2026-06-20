@@ -105,10 +105,7 @@ export function BossPanel(props: {
           {jobs.map((j, i) => (
             <div key={j.id || i} className="job-row">
               <div style={{ minWidth: 0, flex: 1 }}>
-                <div className="job-row-title">
-                  {j.title || "(无标题)"}
-                  <span className="job-row-salary">{j.salary}</span>
-                </div>
+                <div className="job-row-title">{j.title || "(无标题)"}</div>
                 <div className="hint" style={{ marginTop: 2 }}>
                   {[j.company, j.tags].filter(Boolean).join(" · ")}
                 </div>

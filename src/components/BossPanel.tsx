@@ -4,12 +4,14 @@ import {
   openBossWindow,
   bossSearch,
   bossFetchJd,
+  bossReplies,
   type BossJob,
+  type BossReplies,
 } from "../lib/tauri";
 import { cityCode } from "../data/cities";
 import { ApplyModal } from "./ApplyModal";
 import { BatchApplyModal } from "./BatchApplyModal";
-import { loadApplied, markApplied } from "../lib/ledger";
+import { getDaily, loadApplied, markApplied } from "../lib/ledger";
 import type { GatewayConfig } from "../gateway/types";
 
 // BOSS 投递台(Phase B step1-3b):登录 → 抓 JD → 审核后半自动投递(单条/批量)。
@@ -32,7 +34,21 @@ export function BossPanel(props: {
   const [applyJob, setApplyJob] = useState<BossJob | null>(null);
   const [showBatch, setShowBatch] = useState(false);
   const [appliedIds, setAppliedIds] = useState<Set<string>>(() => loadApplied());
+  const [replies, setReplies] = useState<BossReplies | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const desktop = isDesktop();
+
+  async function refreshReplies() {
+    setErr("");
+    setRefreshing(true);
+    try {
+      setReplies(await bossReplies());
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   function handleApplied(id: string) {
     markApplied(id);
@@ -107,6 +123,13 @@ export function BossPanel(props: {
         <strong>「{props.job || "（未选）"}」</strong> + 城市
         <strong>「{props.city}」</strong>抓取在招岗位,点「用这个」把 JD 灌进生成器。
       </p>
+      <p className="hint" style={{ marginTop: 0 }}>
+        今日已投 <strong>{getDaily()}</strong>/{props.dailyCap} · 累计已投{" "}
+        <strong>{appliedIds.size}</strong>
+        {getDaily() >= props.dailyCap && (
+          <span style={{ color: "var(--warn)" }}> · 已达单日上限</span>
+        )}
+      </p>
       <div className="row" style={{ flexWrap: "wrap" }}>
         <button className="ghost" disabled={opening} onClick={open}>
           {opening ? "打开中…" : "打开 / 登录 BOSS"}
@@ -119,9 +142,41 @@ export function BossPanel(props: {
             批量投递({jobs.length})
           </button>
         )}
+        <button className="ghost" disabled={refreshing} onClick={refreshReplies}>
+          {refreshing ? "刷新中…" : "刷新回复"}
+        </button>
         <span className="tier-pill">step 3b · 半自动投递</span>
       </div>
       {err && <div className="err">{err}</div>}
+
+      {replies && (
+        <div className="funnel">
+          <div className="funnel-cell">
+            <span className="funnel-num">{appliedIds.size}</span>
+            <span className="hint">累计已投</span>
+          </div>
+          <div className="funnel-arrow">→</div>
+          <div className="funnel-cell">
+            <span className="funnel-num">{replies.total}</span>
+            <span className="hint">已沟通会话</span>
+          </div>
+          <div className="funnel-arrow">→</div>
+          <div className="funnel-cell">
+            <span className="funnel-num">{replies.withReply}</span>
+            <span className="hint">有新回复</span>
+          </div>
+          <div className="funnel-arrow">=</div>
+          <div className="funnel-cell">
+            <span className="funnel-num" style={{ color: "var(--accent-strong)" }}>
+              {replies.total
+                ? Math.round((replies.withReply / replies.total) * 100)
+                : 0}
+              %
+            </span>
+            <span className="hint">回复率</span>
+          </div>
+        </div>
+      )}
 
       {jobs.length > 0 && (
         <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>

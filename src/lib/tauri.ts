@@ -68,6 +68,19 @@ export async function bossFetchJd(url: string): Promise<BossJd> {
   return JSON.parse(json) as BossJd;
 }
 
+export interface BossReplies {
+  total: number;
+  withReply: number;
+  items: { name: string; last: string; unread: boolean }[];
+}
+
+/** 抓 BOSS 聊天列表统计回复(总会话/有新回复)。 */
+export async function bossReplies(): Promise<BossReplies> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  const json = await invoke<string>("boss_replies");
+  return JSON.parse(json) as BossReplies;
+}
+
 /** 投递:打招呼 + 追发定制招呼语。必须用户审核后调用。 */
 export async function bossApply(
   url: string,

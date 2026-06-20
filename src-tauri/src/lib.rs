@@ -104,6 +104,33 @@ const SEND_MSG_JS: &str = r#"(function(){
   go();
 })();"#;
 
+// 抓聊天列表统计回复:总会话数、有新回复(未读)数、明细。失败回传诊断。
+const SCRAPE_REPLIES_JS: &str = r#"(function(){
+  var tries=0;
+  function emit(ev,d){try{window.__TAURI__.event.emit(ev,d);}catch(e){}}
+  function pick(el,sels){for(var i=0;i<sels.length;i++){var n=el.querySelector(sels[i]);if(n&&n.innerText)return n.innerText.trim();}return '';}
+  function go(){
+    try{
+      if(!window.__TAURI__||!window.__TAURI__.event){if(tries<30){tries++;return setTimeout(go,400);}return;}
+      var items=document.querySelectorAll('.geek-item, ul.geek-list>li, .chat-list li, [role="listitem"], li[ka^="chat_"]');
+      if(items.length===0 && tries<25){tries++;return setTimeout(go,500);}
+      var out=[],withReply=0;
+      items.forEach(function(li){
+        var unread=!!li.querySelector('.badge-count, .red-dot, [class*="badge"], [class*="unread"], .notice-dot');
+        if(unread)withReply++;
+        out.push({
+          name:pick(li,['.name','.geek-name','[class*="name"]']),
+          last:pick(li,['.push-text','.last-msg','.gray','[class*="last"]','[class*="content"]']).slice(0,40),
+          unread:unread
+        });
+      });
+      if(items.length===0){emit('boss-error','聊天列表空 ·诊断:'+JSON.stringify({url:location.href.slice(0,80),lis:document.querySelectorAll('li').length}));return;}
+      emit('boss-replies',{total:items.length,withReply:withReply,items:out.slice(0,60)});
+    }catch(e){emit('boss-error','replies: '+String(e));}
+  }
+  go();
+})();"#;
+
 fn boss_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, String> {
     app.get_webview_window("boss")
         .ok_or_else(|| "BOSS 窗口未打开,请先点「打开 / 登录 BOSS」并登录".to_string())
@@ -195,6 +222,18 @@ async fn boss_apply(
     wait_event(&app, "boss-apply-done").await
 }
 
+/// 抓 BOSS 聊天列表统计回复(总会话/有新回复)。
+#[tauri::command]
+async fn boss_replies(app: tauri::AppHandle) -> Result<String, String> {
+    navigate_scrape(
+        &app,
+        "https://www.zhipin.com/web/geek/chat".to_string(),
+        SCRAPE_REPLIES_JS,
+        "boss-replies",
+    )
+    .await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -211,7 +250,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             boss_search,
             boss_fetch_jd,
-            boss_apply
+            boss_apply,
+            boss_replies
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

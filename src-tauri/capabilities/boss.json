@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "boss-remote",
+  "description": "允许内置 BOSS 远程页面通过 IPC 回传抓取结果(emit 事件)",
+  "windows": ["boss"],
+  "remote": {
+    "urls": ["https://*.zhipin.com"]
+  },
+  "permissions": [
+    "core:event:allow-emit",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten"
+  ]
+}

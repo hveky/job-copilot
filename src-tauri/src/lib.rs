@@ -1,29 +1,32 @@
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tauri::Manager;
+use tauri::{Listener, Manager};
 
-// 抓取列表:在 BOSS 搜索页注入,等卡片出现后把 JSON 写进 document.title 回传。
+// 抓取列表:在 BOSS 搜索页注入,等卡片+__TAURI__ 就绪后用 IPC 事件回传。
 const SCRAPE_LIST_JS: &str = r#"(function(){
   var tries=0;
   function pick(el,sels){for(var i=0;i<sels.length;i++){var n=el.querySelector(sels[i]);if(n&&n.innerText)return n.innerText.trim();}return '';}
+  function emit(ev,data){try{window.__TAURI__.event.emit(ev,data);}catch(e){}}
   function go(){
-    var cards=document.querySelectorAll('li.job-card-box, li.job-card-wrapper');
-    if(cards.length===0 && tries<25){tries++;return setTimeout(go,400);}
-    var out=[];
-    cards.forEach(function(li){
-      var a=li.querySelector('a.job-card-left, a[ka^="search_list"], a');
-      var href=a?a.href:'';
-      var id='';
-      var m=href.match(/job_detail\/([^.?\/]+)/);
-      if(m)id=m[1];
-      out.push({
-        id:id, href:href,
-        title:pick(li,['.job-name','.job-title','[class*="job-name"]']),
-        salary:pick(li,['.job-salary','.salary','[class*="salary"]']),
-        company:pick(li,['.boss-name','.company-name','[class*="company-name"]']),
-        tags:pick(li,['.tag-list','.job-card-footer'])
+    try{
+      if(!window.__TAURI__||!window.__TAURI__.event){if(tries<30){tries++;return setTimeout(go,400);}return;}
+      var cards=document.querySelectorAll('li.job-card-box, li.job-card-wrapper');
+      if(cards.length===0 && tries<25){tries++;return setTimeout(go,400);}
+      var out=[];
+      cards.forEach(function(li){
+        var a=li.querySelector('a.job-card-left, a[ka^="search_list"], a');
+        var href=a?a.href:'';
+        var id='';var m=href.match(/job_detail\/([^.?\/]+)/);if(m)id=m[1];
+        out.push({
+          id:id, href:href,
+          title:pick(li,['.job-name','.job-title','[class*="job-name"]']),
+          salary:pick(li,['.job-salary','.salary','[class*="salary"]']),
+          company:pick(li,['.boss-name','.company-name','[class*="company-name"]']),
+          tags:pick(li,['.tag-list','.job-card-footer'])
+        });
       });
-    });
-    document.title='QZC_JOBS:'+JSON.stringify(out).slice(0,60000);
+      emit('boss-result', out);
+    }catch(e){emit('boss-error','list: '+String(e));}
   }
   go();
 })();"#;
@@ -32,74 +35,88 @@ const SCRAPE_LIST_JS: &str = r#"(function(){
 const SCRAPE_JD_JS: &str = r#"(function(){
   var tries=0;
   function txt(sels){for(var i=0;i<sels.length;i++){var n=document.querySelector(sels[i]);if(n&&n.innerText)return n.innerText.trim();}return '';}
+  function emit(ev,data){try{window.__TAURI__.event.emit(ev,data);}catch(e){}}
   function go(){
-    var jd=txt(['.job-sec-text','.job-detail-section .text','[class*="job-sec"] .text']);
-    if(!jd && tries<25){tries++;return setTimeout(go,400);}
-    var o={
-      title:txt(['.job-banner .name h1','.name h1','.job-name','h1']),
-      salary:txt(['.job-banner .salary','.salary','[class*="salary"]']),
-      company:txt(['.company-info .name','.sider-company .name','[class*="company"] .name']),
-      jd:jd
-    };
-    document.title='QZC_JD:'+JSON.stringify(o).slice(0,120000);
+    try{
+      if(!window.__TAURI__||!window.__TAURI__.event){if(tries<30){tries++;return setTimeout(go,400);}return;}
+      var jd=txt(['.job-sec-text','.job-detail-section .text','[class*="job-sec"] .text']);
+      if(!jd && tries<25){tries++;return setTimeout(go,400);}
+      emit('boss-jd',{
+        title:txt(['.job-banner .name h1','.name h1','.job-name','h1']),
+        salary:txt(['.job-banner .salary','.salary','[class*="salary"]']),
+        company:txt(['.company-info .name','.sider-company .name','[class*="company"] .name']),
+        jd:jd
+      });
+    }catch(e){emit('boss-error','jd: '+String(e));}
   }
   go();
 })();"#;
-
-/// 注入脚本 + 轮询窗口标题,取出指定前缀后的载荷(依赖 document.title 同步到原生窗口标题)。
-async fn eval_and_collect(
-    boss: &tauri::WebviewWindow,
-    nav_url: Option<String>,
-    script: &str,
-    prefix: &str,
-) -> Result<String, String> {
-    if let Some(url) = nav_url {
-        boss.eval(&format!("window.location.href = {:?};", url))
-            .map_err(|e| e.to_string())?;
-        tokio::time::sleep(Duration::from_millis(1600)).await;
-    }
-    boss.eval(script).map_err(|e| e.to_string())?;
-    let want = format!("{}:", prefix);
-    for _ in 0..40 {
-        tokio::time::sleep(Duration::from_millis(400)).await;
-        let t = boss.title().map_err(|e| e.to_string())?;
-        if let Some(rest) = t.strip_prefix(&want) {
-            let _ = boss.eval("document.title='BOSS直聘';");
-            return Ok(rest.to_string());
-        }
-        if let Some(err) = t.strip_prefix("QZC_ERR:") {
-            return Err(err.to_string());
-        }
-    }
-    Err("抓取超时(可能未登录、被风控、或页面结构已变化)".into())
-}
 
 fn boss_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, String> {
     app.get_webview_window("boss")
         .ok_or_else(|| "BOSS 窗口未打开,请先点「打开 / 登录 BOSS」并登录".to_string())
 }
 
-/// 按岗位+城市码搜岗,抓取列表(返回 JSON 字符串数组)。
+/// 注入脚本后,等待成功事件或 boss-error,带超时。
+async fn wait_event(app: &tauri::AppHandle, ok_event: &str) -> Result<String, String> {
+    let (tx, rx) = tokio::sync::oneshot::channel::<Result<String, String>>();
+    let tx = Arc::new(Mutex::new(Some(tx)));
+
+    let tx_ok = tx.clone();
+    let id_ok = app.once(ok_event.to_string(), move |e| {
+        if let Some(tx) = tx_ok.lock().unwrap().take() {
+            let _ = tx.send(Ok(e.payload().to_string()));
+        }
+    });
+    let tx_err = tx.clone();
+    let id_err = app.once("boss-error", move |e| {
+        if let Some(tx) = tx_err.lock().unwrap().take() {
+            let _ = tx.send(Err(e.payload().to_string()));
+        }
+    });
+
+    let res = match tokio::time::timeout(Duration::from_secs(25), rx).await {
+        Ok(Ok(r)) => r,
+        _ => Err("抓取超时(BOSS 页未回传:可能未登录、被风控,或页面结构已变化)".into()),
+    };
+    app.unlisten(id_ok);
+    app.unlisten(id_err);
+    res
+}
+
+async fn navigate_scrape(
+    app: &tauri::AppHandle,
+    url: String,
+    script: &str,
+    ok_event: &str,
+) -> Result<String, String> {
+    let boss = boss_window(app)?;
+    boss.eval(&format!("window.location.href = {:?};", url))
+        .map_err(|e| e.to_string())?;
+    tokio::time::sleep(Duration::from_millis(1600)).await;
+    boss.eval(script).map_err(|e| e.to_string())?;
+    wait_event(app, ok_event).await
+}
+
+/// 按岗位+城市码搜岗,抓取列表(返回 JSON 数组字符串)。
 #[tauri::command]
 async fn boss_search(
     app: tauri::AppHandle,
     query: String,
     city: String,
 ) -> Result<String, String> {
-    let boss = boss_window(&app)?;
     let url = format!(
         "https://www.zhipin.com/web/geek/jobs?query={}&city={}",
         urlencoding::encode(&query),
         urlencoding::encode(&city)
     );
-    eval_and_collect(&boss, Some(url), SCRAPE_LIST_JS, "QZC_JOBS").await
+    navigate_scrape(&app, url, SCRAPE_LIST_JS, "boss-result").await
 }
 
-/// 打开某岗位详情页并抓 JD。
+/// 打开某岗位详情页并抓 JD(返回 JSON 对象字符串)。
 #[tauri::command]
 async fn boss_fetch_jd(app: tauri::AppHandle, url: String) -> Result<String, String> {
-    let boss = boss_window(&app)?;
-    eval_and_collect(&boss, Some(url), SCRAPE_JD_JS, "QZC_JD").await
+    navigate_scrape(&app, url, SCRAPE_JD_JS, "boss-jd").await
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

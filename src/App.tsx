@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { BossPanel } from "./components/BossPanel";
 import { ContentPanel } from "./components/ContentPanel";
 import { Copilot } from "./components/Copilot";
 import { InstructionPanel } from "./components/InstructionPanel";
@@ -85,6 +86,7 @@ export function App() {
             onActiveChange={(activeJob) => patch({ activeJob })}
             onCityChange={(city) => patch({ city })}
           />
+          <BossPanel />
           <ContentPanel
             gateway={gateway}
             job={settings.activeJob}

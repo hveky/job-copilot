@@ -12,6 +12,9 @@ export interface Settings {
   activeJob: string; // 当前用于定位的岗位(targetJobs 之一)
   city: string; // 选中城市(label),码见 data/cities.ts
   theme: "light" | "dark"; // 界面主题
+  dailyCap: number; // 单日投递上限(防风控)
+  delayMin: number; // 投递最小间隔(秒)
+  delayMax: number; // 投递最大间隔(秒)
 }
 
 const KEY = "qzc.settings.v1";
@@ -35,6 +38,9 @@ export const DEFAULT_SETTINGS: Settings = {
   activeJob: "AI / Agent",
   city: "广州",
   theme: "light",
+  dailyCap: 30,
+  delayMin: 40,
+  delayMax: 100,
 };
 
 export function loadSettings(): Settings {

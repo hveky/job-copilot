@@ -8,15 +8,20 @@ import {
 } from "../lib/tauri";
 import { cityCode } from "../data/cities";
 import { ApplyModal } from "./ApplyModal";
+import { BatchApplyModal } from "./BatchApplyModal";
+import { loadApplied, markApplied } from "../lib/ledger";
 import type { GatewayConfig } from "../gateway/types";
 
-// BOSS 投递台(Phase B step1-3):登录 → 抓 JD → 审核后半自动投递。
+// BOSS 投递台(Phase B step1-3b):登录 → 抓 JD → 审核后半自动投递(单条/批量)。
 export function BossPanel(props: {
   gateway: GatewayConfig;
   job: string;
   city: string;
   resume: string;
   instruction: string;
+  dailyCap: number;
+  delayMin: number;
+  delayMax: number;
   onPickJd: (jd: string) => void;
 }) {
   const [err, setErr] = useState("");
@@ -25,8 +30,14 @@ export function BossPanel(props: {
   const [fetching, setFetching] = useState("");
   const [jobs, setJobs] = useState<BossJob[]>([]);
   const [applyJob, setApplyJob] = useState<BossJob | null>(null);
-  const [appliedIds, setAppliedIds] = useState<Set<string>>(new Set());
+  const [showBatch, setShowBatch] = useState(false);
+  const [appliedIds, setAppliedIds] = useState<Set<string>>(() => loadApplied());
   const desktop = isDesktop();
+
+  function handleApplied(id: string) {
+    markApplied(id);
+    setAppliedIds((s) => new Set(s).add(id));
+  }
 
   async function open() {
     setErr("");
@@ -103,7 +114,12 @@ export function BossPanel(props: {
         <button className="primary" disabled={searching} onClick={search}>
           {searching ? "抓取中…" : "抓取岗位"}
         </button>
-        <span className="tier-pill">step 2 · 自动抓 JD</span>
+        {jobs.length > 0 && (
+          <button onClick={() => setShowBatch(true)}>
+            批量投递({jobs.length})
+          </button>
+        )}
+        <span className="tier-pill">step 3b · 半自动投递</span>
       </div>
       {err && <div className="err">{err}</div>}
 
@@ -145,9 +161,22 @@ export function BossPanel(props: {
           resume={props.resume}
           instruction={props.instruction}
           onClose={() => setApplyJob(null)}
-          onApplied={(id) =>
-            setAppliedIds((s) => new Set(s).add(id))
-          }
+          onApplied={handleApplied}
+        />
+      )}
+
+      {showBatch && (
+        <BatchApplyModal
+          gateway={props.gateway}
+          jobs={jobs}
+          jobLabel={props.job}
+          resume={props.resume}
+          instruction={props.instruction}
+          dailyCap={props.dailyCap}
+          delayMin={props.delayMin}
+          delayMax={props.delayMax}
+          onClose={() => setShowBatch(false)}
+          onAppliedId={handleApplied}
         />
       )}
     </div>

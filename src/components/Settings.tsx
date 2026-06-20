@@ -62,6 +62,34 @@ export function SettingsModal(props: {
           onChange={(e) => set("resume", e.target.value)}
         />
 
+        <label className="field">投递安全(防风控)</label>
+        <div className="row" style={{ gap: 12 }}>
+          <div style={{ flex: 1 }}>
+            <span className="hint">单日上限</span>
+            <input
+              type="number"
+              value={s.dailyCap}
+              onChange={(e) => set("dailyCap", Number(e.target.value) || 0)}
+            />
+          </div>
+          <div style={{ flex: 1 }}>
+            <span className="hint">最小间隔(秒)</span>
+            <input
+              type="number"
+              value={s.delayMin}
+              onChange={(e) => set("delayMin", Number(e.target.value) || 0)}
+            />
+          </div>
+          <div style={{ flex: 1 }}>
+            <span className="hint">最大间隔(秒)</span>
+            <input
+              type="number"
+              value={s.delayMax}
+              onChange={(e) => set("delayMax", Number(e.target.value) || 0)}
+            />
+          </div>
+        </div>
+
         <div className="actions">
           <button className="ghost" onClick={props.onClose}>
             取消

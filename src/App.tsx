@@ -92,6 +92,9 @@ export function App() {
             city={settings.city}
             resume={settings.resume}
             instruction={settings.instruction}
+            dailyCap={settings.dailyCap}
+            delayMin={settings.delayMin}
+            delayMax={settings.delayMax}
             onPickJd={setJd}
           />
           <ContentPanel

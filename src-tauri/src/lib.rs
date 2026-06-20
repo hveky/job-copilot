@@ -52,31 +52,45 @@ const SCRAPE_JD_JS: &str = r#"(function(){
   go();
 })();"#;
 
-// 打招呼:点详情页「立即沟通」。
+// 打招呼:点详情页「立即沟通」(等按钮出现再点)。
 const CLICK_STARTCHAT_JS: &str = r#"(function(){
-  try{
-    var b=document.querySelector('a.btn-startchat, .btn-startchat, a[ka="job-detail-startchat"]');
-    if(b){b.click();}
-  }catch(e){}
+  var t=0;
+  function go(){
+    var b=document.querySelector('a.btn-startchat, .btn-startchat, a[ka="job-detail-startchat"], .op-btn-chat, .btn-chat');
+    if(b){b.click();return;}
+    if(t<25){t++;setTimeout(go,300);}
+  }
+  go();
 })();"#;
 
-// 追发定制招呼语:contenteditable 的 chat-input + 拿父级 __vue__ 调 handleSubmit。
-// __MSG__ 由 Rust 用 serde_json 注入为安全字符串字面量。
+// 追发定制招呼语:在主文档+同源 iframe 里找 contenteditable 输入框,
+// 拿父级 __vue__ 调 handleSubmit。失败回传诊断。__MSG__ 由 Rust serde_json 注入。
 const SEND_MSG_JS: &str = r#"(function(){
   var MSG=__MSG__; var tries=0;
   function emit(ev,d){try{window.__TAURI__.event.emit(ev,d);}catch(e){}}
+  function docs(){var a=[document];document.querySelectorAll('iframe').forEach(function(f){try{if(f.contentDocument)a.push(f.contentDocument);}catch(e){}});return a;}
+  function findInput(){
+    var sels=['div.chat-input[contenteditable=true]','div.chat-input[contenteditable]','.chat-input[contenteditable]','.chat-editor [contenteditable=true]','[contenteditable=true]'];
+    var ds=docs();
+    for(var i=0;i<ds.length;i++){for(var j=0;j<sels.length;j++){var n=ds[i].querySelector(sels[j]);if(n)return n;}}
+    return null;
+  }
+  function diag(){
+    var ce=0;docs().forEach(function(d){try{ce+=d.querySelectorAll('[contenteditable=true]').length;}catch(e){}});
+    return {url:location.href.slice(0,120),startChat:!!document.querySelector('a.btn-startchat,.btn-startchat'),contenteditable:ce,iframes:document.querySelectorAll('iframe').length,textareas:document.querySelectorAll('textarea').length};
+  }
   function go(){
     try{
       if(!window.__TAURI__||!window.__TAURI__.event){if(tries<40){tries++;return setTimeout(go,400);}return;}
-      var ce=document.querySelector('div.chat-input[contenteditable=true], div.chat-input[contenteditable]');
-      if(!ce){if(tries<40){tries++;return setTimeout(go,500);}emit('boss-error','未出现聊天输入框(可能已沟通过、需验证码,或页面结构变化)');return;}
+      var ce=findInput();
+      if(!ce){if(tries<40){tries++;return setTimeout(go,500);}emit('boss-error','未出现聊天输入框 ·诊断:'+JSON.stringify(diag()));return;}
       ce.focus();
       document.execCommand('insertText',false,MSG);
       var n=ce; while(n&&!n.__vue__) n=n.parentElement;
-      if(!n||!n.__vue__){emit('boss-error','找不到 chat-input 的 __vue__ 实例(BOSS 改版?)');return;}
+      if(!n||!n.__vue__){emit('boss-error','找到输入框但无 __vue__ 实例 ·'+JSON.stringify(diag()));return;}
       n.__vue__.enableSubmit=true; n.__vue__.handleSubmit();
       setTimeout(function(){emit('boss-apply-done',{ok:!ce.innerText.trim()});},900);
-    }catch(e){emit('boss-error','send: '+String(e));}
+    }catch(e){emit('boss-error','send异常: '+String(e));}
   }
   go();
 })();"#;
@@ -163,7 +177,7 @@ async fn boss_apply(
     tokio::time::sleep(Duration::from_millis(1800)).await;
     // 2. 点「立即沟通」(可能跳转到聊天页)
     boss.eval(CLICK_STARTCHAT_JS).map_err(|e| e.to_string())?;
-    tokio::time::sleep(Duration::from_millis(2500)).await;
+    tokio::time::sleep(Duration::from_millis(3500)).await;
     // 3. 追发定制招呼语(message 用 serde_json 安全注入)
     let msg_lit = serde_json::to_string(&message).map_err(|e| e.to_string())?;
     let send_js = SEND_MSG_JS.replacen("__MSG__", &msg_lit, 1);

@@ -86,7 +86,11 @@ export function App() {
             onActiveChange={(activeJob) => patch({ activeJob })}
             onCityChange={(city) => patch({ city })}
           />
-          <BossPanel />
+          <BossPanel
+            job={settings.activeJob}
+            city={settings.city}
+            onPickJd={setJd}
+          />
           <ContentPanel
             gateway={gateway}
             job={settings.activeJob}

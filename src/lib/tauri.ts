@@ -34,3 +34,36 @@ export async function openBossWindow(): Promise<void> {
     win.once("tauri://error", (e) => reject(new Error(String(e.payload))));
   });
 }
+
+export interface BossJob {
+  id: string;
+  href: string;
+  title: string;
+  salary: string;
+  company: string;
+  tags: string;
+}
+
+export interface BossJd {
+  title: string;
+  salary: string;
+  company: string;
+  jd: string;
+}
+
+/** 驱动 BOSS 窗口按岗位+城市码搜岗,抓列表。 */
+export async function bossSearch(
+  query: string,
+  cityCode: string,
+): Promise<BossJob[]> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  const json = await invoke<string>("boss_search", { query, city: cityCode });
+  return JSON.parse(json) as BossJob[];
+}
+
+/** 打开某岗位详情页抓 JD。 */
+export async function bossFetchJd(url: string): Promise<BossJd> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  const json = await invoke<string>("boss_fetch_jd", { url });
+  return JSON.parse(json) as BossJd;
+}

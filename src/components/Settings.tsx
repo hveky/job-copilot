@@ -27,27 +27,12 @@ export function SettingsModal(props: {
           onChange={(e) => set("dsKey", e.target.value)}
         />
 
-        <label className="field">Anthropic API Key(可选 · premium 精修档)</label>
-        <input
-          type="password"
-          value={s.claudeKey}
-          placeholder="sk-ant-...(不填则精修档不可用)"
-          onChange={(e) => set("claudeKey", e.target.value)}
-        />
-
         <div className="row" style={{ gap: 12 }}>
           <div style={{ flex: 1 }}>
             <label className="field">DeepSeek base_url(Anthropic 兼容)</label>
             <input
               value={s.dsBaseUrl}
               onChange={(e) => set("dsBaseUrl", e.target.value)}
-            />
-          </div>
-          <div style={{ flex: 1 }}>
-            <label className="field">Anthropic base_url</label>
-            <input
-              value={s.claudeBaseUrl}
-              onChange={(e) => set("claudeBaseUrl", e.target.value)}
             />
           </div>
         </div>
@@ -65,13 +50,6 @@ export function SettingsModal(props: {
             <input
               value={s.modelPro}
               onChange={(e) => set("modelPro", e.target.value)}
-            />
-          </div>
-          <div style={{ flex: 1 }}>
-            <label className="field">精修模型(premium)</label>
-            <input
-              value={s.modelOpus}
-              onChange={(e) => set("modelOpus", e.target.value)}
             />
           </div>
         </div>

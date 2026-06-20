@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { ContentPanel } from "./components/ContentPanel";
 import { Copilot } from "./components/Copilot";
 import { InstructionPanel } from "./components/InstructionPanel";
+import { JobPicker } from "./components/JobPicker";
 import { SettingsModal } from "./components/Settings";
 import {
   loadSettings,
@@ -10,26 +11,30 @@ import {
   type Settings,
 } from "./state/settings";
 
+type SbTab = "copilot" | "instruction" | "files";
+
 export function App() {
   const [settings, setSettings] = useState<Settings>(loadSettings);
   const [showSettings, setShowSettings] = useState(false);
-  const [trackId, setTrackId] = useState("ai");
   const [jd, setJd] = useState("");
-  const [sbTab, setSbTab] = useState<"copilot" | "instruction">("copilot");
+  const [sbTab, setSbTab] = useState<SbTab>("copilot");
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const gateway = useMemo(() => toGatewayConfig(settings), [settings]);
   const hasKey = !!settings.dsKey;
+
+  function patch(p: Partial<Settings>) {
+    setSettings((cur) => {
+      const next = { ...cur, ...p };
+      saveSettings(next);
+      return next;
+    });
+  }
 
   function onSave(s: Settings) {
     setSettings(s);
     saveSettings(s);
     setShowSettings(false);
-  }
-
-  function setInstruction(instruction: string) {
-    const s = { ...settings, instruction };
-    setSettings(s);
-    saveSettings(s);
   }
 
   return (
@@ -48,12 +53,22 @@ export function App() {
         </button>
       </header>
 
-      <div className="body">
+      <div className={"body" + (sidebarOpen ? "" : " collapsed")}>
         <main className="main">
+          <JobPicker
+            gateway={gateway}
+            resume={settings.resume}
+            targetJobs={settings.targetJobs}
+            activeJob={settings.activeJob}
+            city={settings.city}
+            onJobsChange={(targetJobs) => patch({ targetJobs })}
+            onActiveChange={(activeJob) => patch({ activeJob })}
+            onCityChange={(city) => patch({ city })}
+          />
           <ContentPanel
             gateway={gateway}
-            trackId={trackId}
-            onTrackChange={setTrackId}
+            job={settings.activeJob}
+            city={settings.city}
             jd={jd}
             onJdChange={setJd}
             resume={settings.resume}
@@ -61,36 +76,77 @@ export function App() {
           />
         </main>
 
-        <aside className="sidebar">
-          <div className="sb-tabs">
+        {sidebarOpen ? (
+          <aside className="sidebar">
+            <div className="sb-tabs">
+              <button
+                className={sbTab === "copilot" ? "active" : ""}
+                onClick={() => setSbTab("copilot")}
+              >
+                回复助手
+              </button>
+              <button
+                className={sbTab === "instruction" ? "active" : ""}
+                onClick={() => setSbTab("instruction")}
+              >
+                Instruction
+              </button>
+              <button
+                className={sbTab === "files" ? "active" : ""}
+                onClick={() => setSbTab("files")}
+              >
+                文件
+              </button>
+              <button
+                className="sb-collapse"
+                title="折叠边栏"
+                onClick={() => setSidebarOpen(false)}
+              >
+                ›
+              </button>
+            </div>
+            {sbTab === "copilot" && (
+              <Copilot
+                gateway={gateway}
+                job={settings.activeJob}
+                jd={jd}
+                resume={settings.resume}
+                instruction={settings.instruction}
+              />
+            )}
+            {sbTab === "instruction" && (
+              <InstructionPanel
+                value={settings.instruction}
+                onChange={(instruction) => patch({ instruction })}
+              />
+            )}
+            {sbTab === "files" && (
+              <div className="chat" style={{ justifyContent: "center" }}>
+                <div className="hint" style={{ textAlign: "center" }}>
+                  「文件」需要桌面版(Tauri)才能读写本地求职工作区。
+                  <br />
+                  <br />
+                  届时这里会显示 resume / talk / jds 文件树,
+                  <br />
+                  AI 用读/写/列工具直接帮你改简历话术。
+                  <br />
+                  <br />
+                  <span className="tier-pill">敬请期待 · M2</span>
+                </div>
+              </div>
+            )}
+          </aside>
+        ) : (
+          <div className="sidebar-rail">
             <button
-              className={sbTab === "copilot" ? "active" : ""}
-              onClick={() => setSbTab("copilot")}
+              className="sb-collapse"
+              title="展开边栏"
+              onClick={() => setSidebarOpen(true)}
             >
-              回复助手
-            </button>
-            <button
-              className={sbTab === "instruction" ? "active" : ""}
-              onClick={() => setSbTab("instruction")}
-            >
-              Instruction
+              ‹
             </button>
           </div>
-          {sbTab === "copilot" ? (
-            <Copilot
-              gateway={gateway}
-              trackId={trackId}
-              jd={jd}
-              resume={settings.resume}
-              instruction={settings.instruction}
-            />
-          ) : (
-            <InstructionPanel
-              value={settings.instruction}
-              onChange={setInstruction}
-            />
-          )}
-        </aside>
+        )}
       </div>
 
       {showSettings && (

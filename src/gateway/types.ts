@@ -9,7 +9,7 @@ export interface ChatMessage {
 }
 
 /** 任务档位 → 决定路由到哪个 provider+model(见 PRD §9 模型分层) */
-export type Tier = "light" | "deep" | "premium";
+export type Tier = "light" | "deep";
 
 export type AuthStyle = "x-api-key" | "bearer";
 
@@ -21,11 +21,10 @@ export interface ProviderConfig {
   authStyle: AuthStyle;
 }
 
-/** light/deep 默认走 DeepSeek;premium 走 Claude。 */
+/** light/deep 均走 DeepSeek(/anthropic 兼容端点)。 */
 export interface GatewayConfig {
   light: ProviderConfig; // DeepSeek V4 Flash
   deep: ProviderConfig; // DeepSeek V4 Pro
-  premium: ProviderConfig; // Claude Opus 4.8
 }
 
 export interface ChatRequest {

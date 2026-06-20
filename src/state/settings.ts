@@ -2,15 +2,15 @@
 import type { GatewayConfig } from "../gateway/types";
 
 export interface Settings {
-  dsKey: string; // DeepSeek key(默认 light/deep)
-  claudeKey: string; // Anthropic key(premium 精修,可空)
+  dsKey: string; // DeepSeek key(light/deep 均用)
   dsBaseUrl: string;
-  claudeBaseUrl: string;
   modelFlash: string;
   modelPro: string;
-  modelOpus: string;
   resume: string; // 用户简历全文 / 要点
   instruction: string; // 主控指令(CLAUDE.md 式),注入每次 AI 调用的 system 前缀
+  targetJobs: string[]; // 用户确认的目标岗位关键词集合
+  activeJob: string; // 当前用于定位的岗位(targetJobs 之一)
+  city: string; // 选中城市(label),码见 data/cities.ts
 }
 
 const KEY = "qzc.settings.v1";
@@ -25,14 +25,14 @@ export const DEFAULT_INSTRUCTION = `# 主控指令(我的偏好,适用于所有�
 
 export const DEFAULT_SETTINGS: Settings = {
   dsKey: "",
-  claudeKey: "",
   dsBaseUrl: "/api/ds/anthropic", // dev 代理 → api.deepseek.com/anthropic
-  claudeBaseUrl: "/api/anthropic", // dev 代理 → api.anthropic.com
   modelFlash: "deepseek-v4-flash",
   modelPro: "deepseek-v4-pro",
-  modelOpus: "claude-opus-4-8",
   resume: "",
   instruction: DEFAULT_INSTRUCTION,
+  targetJobs: ["AI / Agent"],
+  activeJob: "AI / Agent",
+  city: "广州",
 };
 
 export function loadSettings(): Settings {
@@ -49,7 +49,7 @@ export function saveSettings(s: Settings): void {
   localStorage.setItem(KEY, JSON.stringify(s));
 }
 
-/** 由 Settings 组装网关三档配置。 */
+/** 由 Settings 组装网关两档配置(均走 DeepSeek)。 */
 export function toGatewayConfig(s: Settings): GatewayConfig {
   return {
     light: {
@@ -62,12 +62,6 @@ export function toGatewayConfig(s: Settings): GatewayConfig {
       baseUrl: s.dsBaseUrl,
       apiKey: s.dsKey,
       model: s.modelPro,
-      authStyle: "x-api-key",
-    },
-    premium: {
-      baseUrl: s.claudeBaseUrl,
-      apiKey: s.claudeKey,
-      model: s.modelOpus,
       authStyle: "x-api-key",
     },
   };

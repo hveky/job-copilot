@@ -1,13 +1,13 @@
 import { useRef, useState } from "react";
 import { chat, GatewayError } from "../gateway/client";
 import type { GatewayConfig, Tier } from "../gateway/types";
-import { TRACKS, trackById } from "../prompts/tracks";
 import { contentPackSystem, contentPackUser } from "../prompts/templates";
+import { MarkdownView } from "./MarkdownView";
 
 export function ContentPanel(props: {
   gateway: GatewayConfig;
-  trackId: string;
-  onTrackChange: (id: string) => void;
+  job: string;
+  city: string;
   jd: string;
   onJdChange: (jd: string) => void;
   resume: string;
@@ -16,6 +16,7 @@ export function ContentPanel(props: {
   const [content, setContent] = useState("");
   const [busy, setBusy] = useState(false);
   const [reasoning, setReasoning] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [err, setErr] = useState("");
   const [tier, setTier] = useState<Tier>("deep");
   const abortRef = useRef<AbortController | null>(null);
@@ -28,10 +29,10 @@ export function ContentPanel(props: {
     setErr("");
     setContent("");
     setReasoning(false);
+    setEditing(false);
     setBusy(true);
     const ac = new AbortController();
     abortRef.current = ac;
-    const track = trackById(props.trackId);
     try {
       await chat(props.gateway, {
         tier,
@@ -41,7 +42,8 @@ export function ContentPanel(props: {
             role: "user",
             content: contentPackUser({
               jd: props.jd,
-              track,
+              job: props.job || "(未指定,请从 JD 自行判断)",
+              city: props.city,
               resume: props.resume,
             }),
           },
@@ -79,7 +81,7 @@ export function ContentPanel(props: {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `内容包-${trackById(props.trackId).label}.md`;
+    a.download = `内容包-${props.job || "JD"}.md`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -87,26 +89,11 @@ export function ContentPanel(props: {
   return (
     <div>
       <div className="card">
-        <h3>① 选赛道</h3>
-        <div className="tracks">
-          {TRACKS.map((t) => (
-            <span
-              key={t.id}
-              className={"chip" + (t.id === props.trackId ? " active" : "")}
-              onClick={() => props.onTrackChange(t.id)}
-            >
-              {t.label}
-            </span>
-          ))}
-        </div>
-      </div>
-
-      <div className="card">
         <h3>② 粘贴岗位 JD</h3>
         <textarea
           rows={7}
           value={props.jd}
-          placeholder="把 BOSS / 招聘网站上的岗位 JD 整段粘进来……"
+          placeholder="把 BOSS / 招聘网站上的岗位 JD 整段粘进来……（桌面版将支持自动抓取）"
           onChange={(e) => props.onJdChange(e.target.value)}
         />
         <div className="row" style={{ marginTop: 10 }}>
@@ -127,12 +114,11 @@ export function ContentPanel(props: {
           <span className="hint">档位</span>
           <select
             value={tier}
-            style={{ width: 160 }}
+            style={{ width: 180 }}
             onChange={(e) => setTier(e.target.value as Tier)}
           >
             <option value="light">轻(DeepSeek Flash · 快省)</option>
             <option value="deep">深度(DeepSeek Pro · 推荐)</option>
-            <option value="premium">精修(Claude Opus · 付费)</option>
           </select>
         </div>
         {err && <div className="err">{err}</div>}
@@ -143,6 +129,12 @@ export function ContentPanel(props: {
           <h3 style={{ margin: 0 }}>内容包</h3>
           {content && (
             <div className="row">
+              <button
+                className="small ghost"
+                onClick={() => setEditing((v) => !v)}
+              >
+                {editing ? "预览" : "编辑"}
+              </button>
               <button className="small ghost" onClick={copy}>
                 复制
               </button>
@@ -157,11 +149,13 @@ export function ContentPanel(props: {
             {reasoning ? "🧠 模型推理中…(深度档会先思考再下笔)" : "连接中…"}
           </div>
         )}
-        <div
-          className={"content" + (content ? "" : " empty")}
-          style={{ marginTop: 10 }}
-        >
-          {content || "生成的【JD拆解 / 知识包 / 实操 / 面试准备 / 反问 / 简历针对性优化】会出现在这里,可编辑可导出。"}
+        <div style={{ marginTop: 10 }}>
+          <MarkdownView
+            value={content}
+            editing={editing}
+            onChange={setContent}
+            placeholder="生成的【JD拆解 / 知识包 / 实操 / 面试准备 / 反问 / 简历针对性优化】会出现在这里,可预览可编辑可导出。"
+          />
         </div>
       </div>
     </div>

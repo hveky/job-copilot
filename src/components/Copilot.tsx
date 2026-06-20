@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { chat, GatewayError } from "../gateway/client";
 import type { ChatMessage, GatewayConfig } from "../gateway/types";
-import { trackById } from "../prompts/tracks";
 import { copilotSystem } from "../prompts/templates";
 
 // 回复助手 lite(PRD §5.4):粘 HR 消息 → 出回复草稿。纯多轮 chat。
 export function Copilot(props: {
   gateway: GatewayConfig;
-  trackId: string;
+  job: string;
   jd: string;
   resume: string;
   instruction: string;
@@ -34,7 +33,7 @@ export function Copilot(props: {
       await chat(props.gateway, {
         tier: "light", // 回复助手默认走便宜的 DeepSeek Flash
         system: copilotSystem({
-          track: trackById(props.trackId),
+          job: props.job,
           jd: props.jd,
           resume: props.resume,
           instruction: props.instruction,

@@ -1,5 +1,5 @@
-// Prompt 模板:B 线内容包生成 + 回复助手系统提示。
-import type { Track } from "./tracks";
+// Prompt 模板:B 线内容包生成 + 回复助手系统提示 + AI 荐岗。
+import { biasForJob } from "./tracks";
 
 /** 把主控指令拼到 system 最前面(CLAUDE.md 式注入)。 */
 function withInstruction(instruction: string | undefined, base: string): string {
@@ -21,14 +21,16 @@ export function contentPackSystem(instruction?: string): string {
 
 export function contentPackUser(args: {
   jd: string;
-  track: Track;
+  job: string;
+  city?: string;
   resume: string;
 }): string {
   const resume = args.resume.trim()
     ? args.resume.trim()
     : "(用户暂未提供简历,简历针对性优化部分给出通用建议并标注【需补简历】)";
-  return `# 目标赛道
-${args.track.label} —— ${args.track.bias}
+  const city = args.city?.trim() ? `\n# 目标城市\n${args.city.trim()}` : "";
+  return `# 目标岗位
+${args.job} —— ${biasForJob(args.job)}${city}
 
 # 岗位 JD
 ${args.jd.trim()}
@@ -61,7 +63,7 @@ ${resume}
 
 /** 回复助手 lite:帮用户回复 HR。 */
 export function copilotSystem(ctx: {
-  track?: Track;
+  job?: string;
   jd?: string;
   resume?: string;
   instruction?: string;
@@ -72,9 +74,25 @@ export function copilotSystem(ctx: {
     "你的输出:一段可以直接发出去的中文回复草稿,礼貌、专业、不卑不亢、简洁。必要时先一句简短说明再给草稿。",
     "不要替用户编造他没有的经历或承诺无法兑现的事。",
   ];
-  if (ctx.track) lines.push(`\n当前目标赛道:${ctx.track.label}(${ctx.track.bias})`);
+  if (ctx.job) lines.push(`\n当前目标岗位:${ctx.job}(${biasForJob(ctx.job)})`);
   if (ctx.jd?.trim()) lines.push(`\n当前岗位 JD 摘要:\n${ctx.jd.trim().slice(0, 1200)}`);
   if (ctx.resume?.trim())
     lines.push(`\n用户简历要点:\n${ctx.resume.trim().slice(0, 1200)}`);
   return withInstruction(ctx.instruction, lines.join("\n"));
+}
+
+/** AI 荐岗:据简历 + 用户补充,产出强相关岗位关键词。 */
+export function recommendSystem(): string {
+  return [
+    "你是资深求职顾问。根据用户简历和补充诉求,推荐 5-8 个与他最强相关、且市场在招的岗位关键词。",
+    "只输出岗位关键词本身(BOSS 直聘上能直接搜的那种,如「AI产品经理」「信息流优化师」),每行一个,不要编号、不要解释、不要多余文字。",
+  ].join("\n");
+}
+
+export function recommendUser(args: { resume: string; wish?: string }): string {
+  const resume = args.resume.trim() || "(简历为空,请基于下面的补充诉求推荐)";
+  const wish = args.wish?.trim()
+    ? `\n\n# 用户补充诉求\n${args.wish.trim()}`
+    : "";
+  return `# 用户简历\n${resume}${wish}`;
 }

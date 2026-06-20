@@ -52,14 +52,15 @@ const SCRAPE_JD_JS: &str = r#"(function(){
   go();
 })();"#;
 
-// 打招呼流程:点「立即沟通」→ 处理"已向BOSS发送消息"弹窗点「继续沟通」(跳转聊天页)。
+// 打招呼流程:点「立即沟通」→ 处理"已向BOSS发送消息"弹窗点「继续沟通」(可能在 iframe 内)。
 const CLICK_STARTCHAT_JS: &str = r#"(function(){
-  function clickText(s){var e=document.querySelectorAll('a,button,span,div');for(var i=0;i<e.length;i++){if(e[i].innerText&&e[i].innerText.trim()===s){e[i].click();return true;}}return false;}
+  function allDocs(){var a=[document];document.querySelectorAll('iframe').forEach(function(f){try{if(f.contentDocument)a.push(f.contentDocument);}catch(e){}});return a;}
+  function clickText(s){var ds=allDocs();for(var k=0;k<ds.length;k++){var e=ds[k].querySelectorAll('a,button,span,div');for(var i=0;i<e.length;i++){if(e[i].innerText&&e[i].innerText.trim()===s){e[i].click();return true;}}}return false;}
   var b=document.querySelector('a.btn-startchat, .btn-startchat, a[ka="job-detail-startchat"]');
   if(b){b.click();} else { clickText('立即沟通'); }
   var t=0;
-  function cont(){ if(clickText('继续沟通'))return; if(t<25){t++;setTimeout(cont,400);} }
-  setTimeout(cont, 800);
+  function cont(){ if(clickText('继续沟通'))return; if(t<30){t++;setTimeout(cont,400);} }
+  setTimeout(cont, 1000);
 })();"#;
 
 // 追发定制招呼语:在主文档+同源 iframe 里找 contenteditable 输入框,
@@ -68,25 +69,31 @@ const SEND_MSG_JS: &str = r#"(function(){
   var MSG=__MSG__; var tries=0;
   function emit(ev,d){try{window.__TAURI__.event.emit(ev,d);}catch(e){}}
   function docs(){var a=[document];document.querySelectorAll('iframe').forEach(function(f){try{if(f.contentDocument)a.push(f.contentDocument);}catch(e){}});return a;}
+  function clickText(s){var ds=docs();for(var k=0;k<ds.length;k++){var e=ds[k].querySelectorAll('a,button,span,div');for(var i=0;i<e.length;i++){if(e[i].innerText&&e[i].innerText.trim()===s){e[i].click();return true;}}}return false;}
   function findInput(){
     var sels=['div.chat-input[contenteditable=true]','div.chat-input[contenteditable]','.chat-input[contenteditable]','.chat-editor [contenteditable=true]','[contenteditable=true]'];
     var ds=docs();
-    for(var i=0;i<ds.length;i++){for(var j=0;j<sels.length;j++){var n=ds[i].querySelector(sels[j]);if(n)return n;}}
+    for(var i=0;i<ds.length;i++){for(var j=0;j<sels.length;j++){var n=ds[i].querySelector(sels[j]);if(n)return {el:n,doc:ds[i]};}}
     return null;
   }
   function diag(){
-    var ce=0;docs().forEach(function(d){try{ce+=d.querySelectorAll('[contenteditable=true]').length;}catch(e){}});
-    return {url:location.href.slice(0,120),startChat:!!document.querySelector('a.btn-startchat,.btn-startchat'),contenteditable:ce,iframes:document.querySelectorAll('iframe').length,textareas:document.querySelectorAll('textarea').length};
+    var ce=0,cont=false,stay=false;
+    docs().forEach(function(d){try{ce+=d.querySelectorAll('[contenteditable]').length;d.querySelectorAll('a,button,span,div').forEach(function(e){var t=e.innerText&&e.innerText.trim();if(t==='继续沟通')cont=true;if(t==='留在此页')stay=true;});}catch(e){}});
+    var acc=[];document.querySelectorAll('iframe').forEach(function(f){try{acc.push(!!f.contentDocument);}catch(e){acc.push(false);}});
+    return {url:location.href.slice(0,90),startChat:!!document.querySelector('a.btn-startchat,.btn-startchat'),ce:ce,iframesAcc:acc,continueBtn:cont,stayBtn:stay,ta:document.querySelectorAll('textarea').length};
   }
   function go(){
     try{
       if(!window.__TAURI__||!window.__TAURI__.event){if(tries<40){tries++;return setTimeout(go,400);}return;}
-      var ce=findInput();
-      if(!ce){if(tries<40){tries++;return setTimeout(go,500);}emit('boss-error','未出现聊天输入框 ·诊断:'+JSON.stringify(diag()));return;}
+      // 兜底:每轮都尝试点掉"继续沟通"弹窗(可能在 iframe 内,可能晚出现)
+      clickText('继续沟通');
+      var f=findInput();
+      if(!f){if(tries<40){tries++;return setTimeout(go,500);}emit('boss-error','未出现聊天输入框 ·诊断:'+JSON.stringify(diag()));return;}
+      var ce=f.el, doc=f.doc;
       ce.focus();
-      document.execCommand('insertText',false,MSG);
+      try{doc.execCommand('insertText',false,MSG);}catch(e){ce.textContent=MSG;}
       var n=ce; while(n&&!n.__vue__) n=n.parentElement;
-      if(!n||!n.__vue__){emit('boss-error','找到输入框但无 __vue__ 实例 ·'+JSON.stringify(diag()));return;}
+      if(!n||!n.__vue__){emit('boss-error','找到输入框但无 __vue__ ·'+JSON.stringify(diag()));return;}
       n.__vue__.enableSubmit=true; n.__vue__.handleSubmit();
       setTimeout(function(){emit('boss-apply-done',{ok:!ce.innerText.trim()});},900);
     }catch(e){emit('boss-error','send异常: '+String(e));}

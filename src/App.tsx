@@ -51,6 +51,13 @@ export function App() {
         <button className="small" onClick={() => setShowSettings(true)}>
           设置
         </button>
+        <button
+          className="small"
+          title={sidebarOpen ? "折叠右侧边栏" : "展开右侧边栏"}
+          onClick={() => setSidebarOpen((v) => !v)}
+        >
+          {sidebarOpen ? "» 边栏" : "« 边栏"}
+        </button>
       </header>
 
       <div className={"body" + (sidebarOpen ? "" : " collapsed")}>
@@ -76,7 +83,7 @@ export function App() {
           />
         </main>
 
-        {sidebarOpen ? (
+        {sidebarOpen && (
           <aside className="sidebar">
             <div className="sb-tabs">
               <button
@@ -96,13 +103,6 @@ export function App() {
                 onClick={() => setSbTab("files")}
               >
                 文件
-              </button>
-              <button
-                className="sb-collapse"
-                title="折叠边栏"
-                onClick={() => setSidebarOpen(false)}
-              >
-                ›
               </button>
             </div>
             {sbTab === "copilot" && (
@@ -136,16 +136,6 @@ export function App() {
               </div>
             )}
           </aside>
-        ) : (
-          <div className="sidebar-rail">
-            <button
-              className="sb-collapse"
-              title="展开边栏"
-              onClick={() => setSidebarOpen(true)}
-            >
-              ‹
-            </button>
-          </div>
         )}
       </div>
 

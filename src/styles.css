@@ -296,28 +296,9 @@ label.field {
   border-color: var(--accent);
 }
 
-/* 折叠边栏 */
+/* 折叠边栏:整列收起,主区占满 */
 .body.collapsed {
-  grid-template-columns: 1fr 30px;
-}
-.sidebar-rail {
-  border-left: 1px solid var(--border);
-  background: var(--panel);
-  display: flex;
-  justify-content: center;
-  padding-top: 10px;
-}
-.sb-collapse {
-  border: 1px solid var(--border);
-  background: var(--panel-2);
-  color: var(--muted);
-  border-radius: 6px;
-  padding: 2px 8px;
-  line-height: 1;
-}
-.sb-tabs .sb-collapse {
-  margin: 6px 6px 6px auto;
-  align-self: center;
+  grid-template-columns: 1fr;
 }
 
 /* Markdown 预览 / 编辑 */

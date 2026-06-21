@@ -3,6 +3,7 @@ import { chatToolsRaw } from "../gateway/client";
 import type { GatewayConfig } from "../gateway/types";
 import { fsList, fsRead, fsWrite, pickFolder } from "../lib/tauri";
 import { MarkdownView } from "./MarkdownView";
+import { renderMd } from "../lib/markdown";
 
 const TOOLS = [
   {
@@ -383,20 +384,19 @@ export function FilesPanel(props: {
                 AI 会读文件、提改动,写入前问你确认。
               </div>
             )}
-            {log.map((m, i) => (
-              <div
-                key={i}
-                className={
-                  m.kind === "user"
-                    ? "msg user"
-                    : m.kind === "tool"
-                      ? "hint"
-                      : "msg assistant"
-                }
-              >
-                {m.text}
-              </div>
-            ))}
+            {log.map((m, i) =>
+              m.kind === "assistant" ? (
+                <div
+                  key={i}
+                  className="msg assistant md-preview"
+                  dangerouslySetInnerHTML={{ __html: renderMd(m.text) }}
+                />
+              ) : (
+                <div key={i} className={m.kind === "user" ? "msg user" : "hint"}>
+                  {m.text}
+                </div>
+              ),
+            )}
             {running && <div className="hint">运行中…</div>}
             {err && <div className="err">{err}</div>}
           </div>

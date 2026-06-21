@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { BossPanel } from "./components/BossPanel";
 import { ContentPanel } from "./components/ContentPanel";
 import { Copilot } from "./components/Copilot";
+import { FilesPanel } from "./components/FilesPanel";
 import { InstructionPanel } from "./components/InstructionPanel";
 import { JobPicker } from "./components/JobPicker";
 import { SettingsModal } from "./components/Settings";
@@ -146,19 +147,12 @@ export function App() {
               />
             )}
             {sbTab === "files" && (
-              <div className="chat" style={{ justifyContent: "center" }}>
-                <div className="hint" style={{ textAlign: "center" }}>
-                  「文件」需要桌面版(Tauri)才能读写本地求职工作区。
-                  <br />
-                  <br />
-                  届时这里会显示 resume / talk / jds 文件树,
-                  <br />
-                  AI 用读/写/列工具直接帮你改简历话术。
-                  <br />
-                  <br />
-                  <span className="tier-pill">敬请期待 · M2</span>
-                </div>
-              </div>
+              <FilesPanel
+                gateway={gateway}
+                workspaceDir={settings.workspaceDir}
+                instruction={settings.instruction}
+                onSetWorkspace={(workspaceDir) => patch({ workspaceDir })}
+              />
             )}
           </aside>
         )}

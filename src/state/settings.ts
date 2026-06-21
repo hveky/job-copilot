@@ -15,6 +15,7 @@ export interface Settings {
   dailyCap: number; // 单日投递上限(防风控)
   delayMin: number; // 投递最小间隔(秒)
   delayMax: number; // 投递最大间隔(秒)
+  workspaceDir: string; // 文件 agent 的求职工作区根目录
 }
 
 const KEY = "qzc.settings.v1";
@@ -41,6 +42,7 @@ export const DEFAULT_SETTINGS: Settings = {
   dailyCap: 30,
   delayMin: 40,
   delayMax: 100,
+  workspaceDir: "",
 };
 
 export function loadSettings(): Settings {

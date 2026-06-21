@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::{Listener, Manager};
@@ -234,9 +235,79 @@ async fn boss_replies(app: tauri::AppHandle) -> Result<String, String> {
     .await
 }
 
+// ===== 文件 agent:本地求职工作区读写(路径安全) =====
+fn safe_join(root: &str, rel: &str) -> Result<PathBuf, String> {
+    if rel.contains("..") {
+        return Err("路径不能包含 ..".into());
+    }
+    let root_p = PathBuf::from(root);
+    if !root_p.is_dir() {
+        return Err("工作区目录无效".into());
+    }
+    let rel = rel.trim_start_matches(['/', '\\']);
+    Ok(root_p.join(rel))
+}
+
+/// 列出工作区下的文本文件(相对路径),跳过重目录。
+#[tauri::command]
+fn fs_list(root: String) -> Result<Vec<String>, String> {
+    let root_p = PathBuf::from(&root);
+    if !root_p.is_dir() {
+        return Err("工作区目录无效".into());
+    }
+    let mut out = vec![];
+    for entry in walkdir::WalkDir::new(&root_p)
+        .max_depth(4)
+        .into_iter()
+        .filter_entry(|e| {
+            let n = e.file_name().to_string_lossy();
+            !matches!(
+                n.as_ref(),
+                "node_modules" | ".git" | "target" | "dist" | ".claude"
+            )
+        })
+    {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        if entry.file_type().is_file() {
+            let n = entry.file_name().to_string_lossy().to_lowercase();
+            if n.ends_with(".md") || n.ends_with(".txt") || n.ends_with(".json") {
+                if let Ok(rel) = entry.path().strip_prefix(&root_p) {
+                    out.push(rel.to_string_lossy().replace('\\', "/"));
+                }
+            }
+        }
+        if out.len() >= 500 {
+            break;
+        }
+    }
+    out.sort();
+    Ok(out)
+}
+
+/// 读取工作区内某文件。
+#[tauri::command]
+fn fs_read(root: String, path: String) -> Result<String, String> {
+    let p = safe_join(&root, &path)?;
+    std::fs::read_to_string(&p).map_err(|e| e.to_string())
+}
+
+/// 写入工作区内某文件(覆盖)。调用方须先让用户确认。
+#[tauri::command]
+fn fs_write(root: String, path: String, content: String) -> Result<(), String> {
+    let p = safe_join(&root, &path)?;
+    if let Some(parent) = p.parent() {
+        std::fs::create_dir_all(parent).ok();
+    }
+    std::fs::write(&p, content).map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -251,7 +322,10 @@ pub fn run() {
             boss_search,
             boss_fetch_jd,
             boss_apply,
-            boss_replies
+            boss_replies,
+            fs_list,
+            fs_read,
+            fs_write
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -312,6 +312,29 @@ label.field {
   font-weight: 500;
 }
 
+/* ---------- 文件 agent ---------- */
+.file-row {
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.file-row:hover {
+  background: var(--surface-2);
+}
+.file-row.active {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+.write-confirm {
+  border-top: 1px solid var(--warn);
+  background: var(--surface-2);
+  padding: 10px 12px;
+}
+
 /* ---------- 回复漏斗 ---------- */
 .funnel {
   display: flex;

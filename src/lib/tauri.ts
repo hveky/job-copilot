@@ -68,6 +68,32 @@ export async function bossFetchJd(url: string): Promise<BossJd> {
   return JSON.parse(json) as BossJd;
 }
 
+// ===== 文件 agent =====
+export async function pickFolder(): Promise<string | null> {
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const res = await open({ directory: true, multiple: false });
+  return typeof res === "string" ? res : null;
+}
+
+export async function fsList(root: string): Promise<string[]> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<string[]>("fs_list", { root });
+}
+
+export async function fsRead(root: string, path: string): Promise<string> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<string>("fs_read", { root, path });
+}
+
+export async function fsWrite(
+  root: string,
+  path: string,
+  content: string,
+): Promise<void> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("fs_write", { root, path, content });
+}
+
 export interface BossReplies {
   total: number;
   withReply: number;

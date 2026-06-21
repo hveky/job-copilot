@@ -70,6 +70,43 @@ export async function chat(
   return await consumeAnthropicSSE(resp.body, req.onDelta, req.onThinking);
 }
 
+/** 非流式 + tool-use:返回原始 Anthropic 响应(content 块数组)。给文件 agent 循环用。 */
+export async function chatToolsRaw(
+  cfg: GatewayConfig,
+  tier: import("./types").Tier,
+  body: {
+    system?: string;
+    messages: unknown[];
+    tools?: unknown[];
+    maxTokens?: number;
+  },
+): Promise<any> {
+  const provider = cfg[tier];
+  if (!provider.apiKey) throw new GatewayError("未配置 API Key。");
+  const resp = await fetch(`${provider.baseUrl}/v1/messages`, {
+    method: "POST",
+    headers: authHeaders(provider),
+    body: JSON.stringify({
+      model: provider.model,
+      max_tokens: body.maxTokens ?? 4000,
+      ...(body.system ? { system: body.system } : {}),
+      messages: body.messages,
+      ...(body.tools ? { tools: body.tools } : {}),
+      stream: false,
+    }),
+  });
+  if (!resp.ok) {
+    let d = "";
+    try {
+      d = await resp.text();
+    } catch {
+      /* ignore */
+    }
+    throw new GatewayError(`请求失败 (${resp.status}) ${d.slice(0, 300)}`, resp.status);
+  }
+  return await resp.json();
+}
+
 /** 解析 Anthropic 风格 SSE,累积 text 增量。DeepSeek /anthropic 端点同构(含 thinking_delta)。 */
 async function consumeAnthropicSSE(
   stream: ReadableStream<Uint8Array>,

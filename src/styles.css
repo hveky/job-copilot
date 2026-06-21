@@ -128,7 +128,14 @@ body {
   min-width: 0;
   overflow: auto;
   padding: 22px 24px;
-  max-width: 920px;
+}
+.divider {
+  background: var(--border);
+  cursor: col-resize;
+  transition: background 0.15s;
+}
+.divider:hover {
+  background: var(--accent);
 }
 .sidebar {
   border-left: 1px solid var(--border);
@@ -333,6 +340,45 @@ label.field {
   border-top: 1px solid var(--warn);
   background: var(--surface-2);
   padding: 10px 12px;
+}
+
+/* ---------- 投递指标卡 ---------- */
+.metrics {
+  display: flex;
+  gap: 12px;
+  margin: 4px 0 12px;
+}
+.metric {
+  flex: 1;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.metric.warn {
+  border-color: var(--warn);
+}
+.metric-num {
+  font-size: 28px;
+  font-weight: 600;
+  font-family: var(--font-display);
+  line-height: 1.1;
+  color: var(--accent-strong);
+}
+.metric.warn .metric-num {
+  color: var(--warn);
+}
+.metric-cap {
+  font-size: 15px;
+  color: var(--muted);
+  font-weight: 400;
+}
+.metric-label {
+  font-size: 12px;
+  color: var(--text-2);
 }
 
 /* ---------- 回复漏斗 ---------- */

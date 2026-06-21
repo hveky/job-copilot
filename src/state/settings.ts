@@ -16,6 +16,7 @@ export interface Settings {
   delayMin: number; // 投递最小间隔(秒)
   delayMax: number; // 投递最大间隔(秒)
   workspaceDir: string; // 文件 agent 的求职工作区根目录
+  sidebarWidth: number; // 右侧边栏宽度(可拖拽)
 }
 
 const KEY = "qzc.settings.v1";
@@ -43,6 +44,7 @@ export const DEFAULT_SETTINGS: Settings = {
   delayMin: 40,
   delayMax: 100,
   workspaceDir: "",
+  sidebarWidth: 392,
 };
 
 export function loadSettings(): Settings {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { BossPanel } from "./components/BossPanel";
 import { ContentPanel } from "./components/ContentPanel";
 import { Copilot } from "./components/Copilot";
@@ -21,6 +21,28 @@ export function App() {
   const [jd, setJd] = useState("");
   const [sbTab, setSbTab] = useState<SbTab>("copilot");
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sbWidth, setSbWidth] = useState(settings.sidebarWidth);
+  const widthRef = useRef(settings.sidebarWidth);
+
+  function startDrag(e: React.MouseEvent) {
+    e.preventDefault();
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    const move = (ev: MouseEvent) => {
+      const w = Math.min(760, Math.max(320, window.innerWidth - ev.clientX));
+      widthRef.current = w;
+      setSbWidth(w);
+    };
+    const up = () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+      patch({ sidebarWidth: widthRef.current });
+    };
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+  }
 
   const gateway = useMemo(() => toGatewayConfig(settings), [settings]);
   const hasKey = !!settings.dsKey;
@@ -75,7 +97,14 @@ export function App() {
         </button>
       </header>
 
-      <div className={"body" + (sidebarOpen ? "" : " collapsed")}>
+      <div
+        className={"body" + (sidebarOpen ? "" : " collapsed")}
+        style={
+          sidebarOpen
+            ? { gridTemplateColumns: `minmax(0,1fr) 6px ${sbWidth}px` }
+            : undefined
+        }
+      >
         <main className="main">
           <JobPicker
             gateway={gateway}
@@ -108,6 +137,10 @@ export function App() {
             instruction={settings.instruction}
           />
         </main>
+
+        {sidebarOpen && (
+          <div className="divider" onMouseDown={startDrag} title="拖拽调整边栏宽度" />
+        )}
 
         {sidebarOpen && (
           <aside className="sidebar">

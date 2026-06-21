@@ -123,13 +123,21 @@ export function BossPanel(props: {
         <strong>「{props.job || "（未选）"}」</strong> + 城市
         <strong>「{props.city}」</strong>抓取在招岗位,点「用这个」把 JD 灌进生成器。
       </p>
-      <p className="hint" style={{ marginTop: 0 }}>
-        今日已投 <strong>{getDaily()}</strong>/{props.dailyCap} · 累计已投{" "}
-        <strong>{appliedIds.size}</strong>
-        {getDaily() >= props.dailyCap && (
-          <span style={{ color: "var(--warn)" }}> · 已达单日上限</span>
-        )}
-      </p>
+      <div className="metrics">
+        <div className={"metric" + (getDaily() >= props.dailyCap ? " warn" : "")}>
+          <span className="metric-num">
+            {getDaily()}
+            <span className="metric-cap">/{props.dailyCap}</span>
+          </span>
+          <span className="metric-label">
+            今日已投{getDaily() >= props.dailyCap ? " · 已达上限" : ""}
+          </span>
+        </div>
+        <div className="metric">
+          <span className="metric-num">{appliedIds.size}</span>
+          <span className="metric-label">累计已投</span>
+        </div>
+      </div>
       <div className="row" style={{ flexWrap: "wrap" }}>
         <button className="ghost" disabled={opening} onClick={open}>
           {opening ? "打开中…" : "打开 / 登录 BOSS"}

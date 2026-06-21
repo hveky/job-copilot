@@ -320,21 +320,79 @@ label.field {
 }
 
 /* ---------- 文件 agent ---------- */
-.file-row {
-  padding: 5px 8px;
-  border-radius: 6px;
+.files-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.files-path {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.files-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.files-top {
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+.hdivider {
+  height: 6px;
+  background: var(--border);
+  cursor: row-resize;
+  flex: 0 0 auto;
+  transition: background 0.15s;
+}
+.hdivider:hover {
+  background: var(--accent);
+}
+.files-chat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.file-editor {
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+}
+.tree {
+  padding: 4px 0;
+}
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
   font-size: 12.5px;
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  border-radius: 5px;
 }
-.file-row:hover {
+.tree-row:hover {
   background: var(--surface-2);
 }
-.file-row.active {
+.tree-row.active {
   background: var(--accent-soft);
   color: var(--accent-strong);
+}
+.tree-caret {
+  width: 12px;
+  color: var(--muted);
+  flex: 0 0 auto;
+}
+.tree-icon {
+  flex: 0 0 auto;
 }
 .write-confirm {
   border-top: 1px solid var(--warn);

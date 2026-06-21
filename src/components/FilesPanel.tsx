@@ -1,12 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { chatToolsRaw } from "../gateway/client";
 import type { GatewayConfig } from "../gateway/types";
-import {
-  fsList,
-  fsRead,
-  fsWrite,
-  pickFolder,
-} from "../lib/tauri";
+import { fsList, fsRead, fsWrite, pickFolder } from "../lib/tauri";
 
 const TOOLS = [
   {
@@ -46,6 +41,43 @@ function agentSystem(instruction: string): string {
   return instruction.trim() ? `${instruction.trim()}\n\n---\n${base}` : base;
 }
 
+interface TreeNode {
+  name: string;
+  path: string;
+  isFile: boolean;
+  children: TreeNode[];
+}
+
+function buildTree(paths: string[]): TreeNode {
+  const root: TreeNode = { name: "", path: "", isFile: false, children: [] };
+  for (const p of paths) {
+    const parts = p.split("/");
+    let cur = root;
+    parts.forEach((part, idx) => {
+      const isFile = idx === parts.length - 1;
+      let child = cur.children.find((c) => c.name === part && c.isFile === isFile);
+      if (!child) {
+        child = {
+          name: part,
+          path: parts.slice(0, idx + 1).join("/"),
+          isFile,
+          children: [],
+        };
+        cur.children.push(child);
+      }
+      cur = child;
+    });
+  }
+  const sortRec = (n: TreeNode) => {
+    n.children.sort((a, b) =>
+      a.isFile !== b.isFile ? (a.isFile ? 1 : -1) : a.name.localeCompare(b.name),
+    );
+    n.children.forEach(sortRec);
+  };
+  sortRec(root);
+  return root;
+}
+
 interface LogItem {
   kind: "user" | "assistant" | "tool";
   text: string;
@@ -59,6 +91,7 @@ export function FilesPanel(props: {
 }) {
   const root = props.workspaceDir;
   const [files, setFiles] = useState<string[]>([]);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [sel, setSel] = useState("");
   const [content, setContent] = useState("");
   const [dirty, setDirty] = useState(false);
@@ -73,6 +106,10 @@ export function FilesPanel(props: {
   );
   const resolveRef = useRef<((ok: boolean) => void) | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
+
+  // 上下分区高度(可拖拽)
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const [topH, setTopH] = useState(280);
 
   useEffect(() => {
     if (root) refresh();
@@ -91,16 +128,22 @@ export function FilesPanel(props: {
       setErr(String(e));
     }
   }
-
   async function refresh() {
     setErr("");
     try {
-      setFiles(await fsList(root));
+      const list = await fsList(root);
+      setFiles(list);
+      // 默认展开顶层文件夹
+      const top = new Set<string>();
+      list.forEach((p) => {
+        const i = p.indexOf("/");
+        if (i > 0) top.add(p.slice(0, i));
+      });
+      setExpanded(top);
     } catch (e) {
       setErr(String(e));
     }
   }
-
   async function openFile(p: string) {
     setErr("");
     try {
@@ -111,7 +154,6 @@ export function FilesPanel(props: {
       setErr(String(e));
     }
   }
-
   async function saveFile() {
     try {
       await fsWrite(root, sel, content);
@@ -119,6 +161,13 @@ export function FilesPanel(props: {
     } catch (e) {
       setErr(String(e));
     }
+  }
+  function toggle(path: string) {
+    setExpanded((s) => {
+      const n = new Set(s);
+      n.has(path) ? n.delete(path) : n.add(path);
+      return n;
+    });
   }
 
   function confirmWrite(path: string, c: string): Promise<boolean> {
@@ -131,6 +180,26 @@ export function FilesPanel(props: {
     setPending(null);
     resolveRef.current?.(ok);
     resolveRef.current = null;
+  }
+
+  function startVDrag(e: React.MouseEvent) {
+    e.preventDefault();
+    const rect = bodyRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    document.body.style.cursor = "row-resize";
+    document.body.style.userSelect = "none";
+    const move = (ev: MouseEvent) => {
+      const h = Math.min(rect.height - 140, Math.max(120, ev.clientY - rect.top));
+      setTopH(h);
+    };
+    const up = () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+    };
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
   }
 
   async function runAgent() {
@@ -173,6 +242,7 @@ export function FilesPanel(props: {
               if (ok) {
                 await fsWrite(root, tu.input.path, tu.input.content);
                 out = "已写入 " + tu.input.path;
+                if (tu.input.path === sel) setContent(tu.input.content);
                 setLog((l) => [...l, { kind: "tool", text: "✅ 写入 " + tu.input.path }]);
               } else {
                 out = "用户拒绝了这次写入";
@@ -195,13 +265,43 @@ export function FilesPanel(props: {
     }
   }
 
+  function renderNode(n: TreeNode, depth: number): React.ReactNode {
+    return n.children.map((c) => {
+      const pad = { paddingLeft: 8 + depth * 14 };
+      if (c.isFile) {
+        return (
+          <div
+            key={c.path}
+            className={"tree-row" + (c.path === sel ? " active" : "")}
+            style={pad}
+            onClick={() => openFile(c.path)}
+          >
+            <span className="tree-icon">📄</span>
+            {c.name}
+          </div>
+        );
+      }
+      const open = expanded.has(c.path);
+      return (
+        <div key={c.path}>
+          <div className="tree-row" style={pad} onClick={() => toggle(c.path)}>
+            <span className="tree-caret">{open ? "▾" : "▸"}</span>
+            <span className="tree-icon">{open ? "📂" : "📁"}</span>
+            {c.name}
+          </div>
+          {open && renderNode(c, depth + 1)}
+        </div>
+      );
+    });
+  }
+
   if (!root) {
     return (
       <div className="chat" style={{ justifyContent: "center" }}>
         <div className="hint" style={{ textAlign: "center" }}>
           选择你的求职工作区文件夹(resume / talk / jds 所在),
           <br />
-          就能让 AI 直接帮你改简历话术。
+          就能浏览编辑文件、让 AI 帮你改简历话术。
           <br />
           <br />
           <button className="primary" onClick={chooseFolder}>
@@ -213,97 +313,104 @@ export function FilesPanel(props: {
     );
   }
 
+  const tree = buildTree(files);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: 0, flex: 1 }}>
-      <div style={{ padding: "8px 10px", borderBottom: "1px solid var(--border)" }}>
-        <div className="row">
-          <span className="hint" style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={root}>
-            {root}
-          </span>
-          <button className="small ghost" onClick={chooseFolder}>切换</button>
-          <button className="small ghost" onClick={refresh}>刷新</button>
+      <div className="files-head">
+        <span className="hint files-path" title={root}>
+          {root}
+        </span>
+        <button className="small ghost" onClick={chooseFolder}>切换</button>
+        <button className="small ghost" onClick={refresh}>刷新</button>
+      </div>
+
+      <div ref={bodyRef} className="files-body">
+        <div className="files-top" style={{ height: topH }}>
+          <div className="tree">{renderNode(tree, 0)}</div>
+          {sel && (
+            <div className="file-editor">
+              <div className="row" style={{ marginBottom: 6 }}>
+                <span className="hint" style={{ flex: 1 }}>{sel}</span>
+                <button className="small primary" disabled={!dirty} onClick={saveFile}>
+                  {dirty ? "保存" : "已保存"}
+                </button>
+              </div>
+              <textarea
+                value={content}
+                onChange={(e) => {
+                  setContent(e.target.value);
+                  setDirty(true);
+                }}
+                style={{ minHeight: 160, fontFamily: "ui-monospace, monospace", fontSize: 12 }}
+              />
+            </div>
+          )}
         </div>
-      </div>
 
-      <div style={{ maxHeight: 150, overflow: "auto", padding: 6, borderBottom: "1px solid var(--border)" }}>
-        {files.length === 0 && <div className="hint" style={{ padding: 6 }}>无文本文件</div>}
-        {files.map((f) => (
-          <div
-            key={f}
-            className={"file-row" + (f === sel ? " active" : "")}
-            onClick={() => openFile(f)}
-          >
-            {f}
+        <div className="hdivider" onMouseDown={startVDrag} title="拖拽调整 AI 区域大小" />
+
+        <div className="files-chat">
+          <div className="chat" ref={logRef} style={{ flex: 1 }}>
+            {log.length === 0 && (
+              <div className="hint" style={{ padding: 8 }}>
+                让 AI 改文件,例如「把 resume 里 AI 方向版的自我介绍改得更突出开源作品」。
+                AI 会读文件、提改动,写入前问你确认。
+              </div>
+            )}
+            {log.map((m, i) => (
+              <div
+                key={i}
+                className={
+                  m.kind === "user"
+                    ? "msg user"
+                    : m.kind === "tool"
+                      ? "hint"
+                      : "msg assistant"
+                }
+              >
+                {m.text}
+              </div>
+            ))}
+            {running && <div className="hint">运行中…</div>}
+            {err && <div className="err">{err}</div>}
           </div>
-        ))}
-      </div>
 
-      {sel && (
-        <div style={{ padding: 8, borderBottom: "1px solid var(--border)" }}>
-          <div className="row" style={{ marginBottom: 6 }}>
-            <span className="hint" style={{ flex: 1 }}>{sel}</span>
-            <button className="small primary" disabled={!dirty} onClick={saveFile}>
-              {dirty ? "保存" : "已保存"}
+          {pending && (
+            <div className="write-confirm">
+              <div className="hint" style={{ marginBottom: 6 }}>
+                AI 要写入 <strong>{pending.path}</strong>({pending.content.length} 字),确认?
+              </div>
+              <div className="content" style={{ maxHeight: 120, overflow: "auto", fontSize: 12, minHeight: 0 }}>
+                {pending.content.slice(0, 600)}
+                {pending.content.length > 600 ? "…" : ""}
+              </div>
+              <div className="row" style={{ marginTop: 6 }}>
+                <button className="ghost small" onClick={() => answerWrite(false)}>拒绝</button>
+                <button className="primary small" onClick={() => answerWrite(true)}>确认写入</button>
+              </div>
+            </div>
+          )}
+
+          <div className="composer">
+            <textarea
+              rows={2}
+              value={input}
+              placeholder="让 AI 改文件…(Enter 发送)"
+              disabled={running}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  runAgent();
+                }
+              }}
+            />
+            <button className="primary" disabled={running} onClick={runAgent}>
+              {running ? "运行中…" : "发送"}
             </button>
           </div>
-          <textarea
-            rows={6}
-            value={content}
-            onChange={(e) => { setContent(e.target.value); setDirty(true); }}
-            style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }}
-          />
         </div>
-      )}
-
-      <div className="chat" ref={logRef} style={{ flex: 1 }}>
-        {log.length === 0 && (
-          <div className="hint" style={{ padding: 8 }}>
-            让 AI 改文件,例如「把 resume 里 AI 方向版的自我介绍改得更突出开源作品」。
-            AI 会读文件、提改动,写入前问你确认。
-          </div>
-        )}
-        {log.map((m, i) => (
-          <div key={i} className={m.kind === "user" ? "msg user" : m.kind === "tool" ? "hint" : "msg assistant"}>
-            {m.text}
-          </div>
-        ))}
-        {running && <div className="hint">运行中…</div>}
-        {err && <div className="err">{err}</div>}
-      </div>
-
-      {pending && (
-        <div className="write-confirm">
-          <div className="hint" style={{ marginBottom: 6 }}>
-            AI 要写入 <strong>{pending.path}</strong>({pending.content.length} 字),确认?
-          </div>
-          <div className="content" style={{ maxHeight: 120, overflow: "auto", fontSize: 12, minHeight: 0 }}>
-            {pending.content.slice(0, 600)}
-            {pending.content.length > 600 ? "…" : ""}
-          </div>
-          <div className="row" style={{ marginTop: 6 }}>
-            <button className="ghost small" onClick={() => answerWrite(false)}>拒绝</button>
-            <button className="primary small" onClick={() => answerWrite(true)}>确认写入</button>
-          </div>
-        </div>
-      )}
-
-      <div className="composer">
-        <textarea
-          rows={2}
-          value={input}
-          placeholder="让 AI 改文件…(Enter 发送)"
-          disabled={running}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              runAgent();
-            }
-          }}
-        />
-        <button className="primary" disabled={running} onClick={runAgent}>
-          {running ? "运行中…" : "发送"}
-        </button>
       </div>
     </div>
   );

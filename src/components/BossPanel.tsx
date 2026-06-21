@@ -170,18 +170,10 @@ export function BossPanel(props: {
           </div>
           <div className="funnel-arrow">→</div>
           <div className="funnel-cell">
-            <span className="funnel-num">{replies.withReply}</span>
-            <span className="hint">有新回复</span>
-          </div>
-          <div className="funnel-arrow">=</div>
-          <div className="funnel-cell">
             <span className="funnel-num" style={{ color: "var(--accent-strong)" }}>
-              {replies.total
-                ? Math.round((replies.withReply / replies.total) * 100)
-                : 0}
-              %
+              {replies.withReply}
             </span>
-            <span className="hint">回复率</span>
+            <span className="hint">有新回复</span>
           </div>
         </div>
       )}

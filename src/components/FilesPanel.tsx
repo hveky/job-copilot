@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { chatToolsRaw } from "../gateway/client";
 import type { GatewayConfig } from "../gateway/types";
 import { fsList, fsRead, fsWrite, pickFolder } from "../lib/tauri";
+import { MarkdownView } from "./MarkdownView";
 
 const TOOLS = [
   {
@@ -95,6 +96,7 @@ export function FilesPanel(props: {
   const [sel, setSel] = useState("");
   const [content, setContent] = useState("");
   const [dirty, setDirty] = useState(false);
+  const [fileEditing, setFileEditing] = useState(true);
   const [err, setErr] = useState("");
 
   // agent
@@ -327,24 +329,40 @@ export function FilesPanel(props: {
 
       <div ref={bodyRef} className="files-body">
         <div className="files-top" style={{ height: topH }}>
-          <div className="tree">{renderNode(tree, 0)}</div>
-          {sel && (
+          {sel ? (
             <div className="file-editor">
               <div className="row" style={{ marginBottom: 6 }}>
-                <span className="hint" style={{ flex: 1 }}>{sel}</span>
+                <button className="small ghost" onClick={() => setSel("")}>
+                  ← 列表
+                </button>
+                <span
+                  className="hint"
+                  style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                  title={sel}
+                >
+                  {sel}
+                </span>
+                <button className="small ghost" onClick={() => setFileEditing((e) => !e)}>
+                  {fileEditing ? "预览" : "编辑"}
+                </button>
                 <button className="small primary" disabled={!dirty} onClick={saveFile}>
                   {dirty ? "保存" : "已保存"}
                 </button>
               </div>
-              <textarea
-                value={content}
-                onChange={(e) => {
-                  setContent(e.target.value);
-                  setDirty(true);
-                }}
-                style={{ minHeight: 160, fontFamily: "ui-monospace, monospace", fontSize: 12 }}
-              />
+              <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
+                <MarkdownView
+                  value={content}
+                  editing={fileEditing}
+                  onChange={(v) => {
+                    setContent(v);
+                    setDirty(true);
+                  }}
+                  placeholder="(空文件)"
+                />
+              </div>
             </div>
+          ) : (
+            <div className="tree">{renderNode(tree, 0)}</div>
           )}
         </div>
 

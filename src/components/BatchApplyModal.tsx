@@ -3,7 +3,12 @@ import { chat, GatewayError } from "../gateway/client";
 import type { GatewayConfig } from "../gateway/types";
 import { greetingSystem, greetingUser } from "../prompts/templates";
 import { bossApply, type BossJob } from "../lib/tauri";
-import { bumpDaily, getDaily, loadApplied, markApplied } from "../lib/ledger";
+import {
+  bumpDaily,
+  getDaily,
+  loadApplied,
+  type ApplyRecord,
+} from "../lib/ledger";
 
 type RowStatus = "pending" | "sending" | "sent" | "failed" | "skipped";
 interface Row {
@@ -27,13 +32,14 @@ export function BatchApplyModal(props: {
   gateway: GatewayConfig;
   jobs: BossJob[];
   jobLabel: string;
+  city: string;
   resume: string;
   instruction: string;
   dailyCap: number;
   delayMin: number;
   delayMax: number;
   onClose: () => void;
-  onAppliedId: (id: string) => void;
+  onApplied: (rec: ApplyRecord) => void;
 }) {
   const [rows, setRows] = useState<Row[]>(() => {
     const applied = loadApplied();
@@ -130,9 +136,18 @@ export function BatchApplyModal(props: {
       try {
         const res = await bossApply(r.job.href, r.greeting.trim());
         if (res.ok) {
-          markApplied(r.job.id || r.job.href);
           bumpDaily();
-          props.onAppliedId(r.job.id || r.job.href);
+          props.onApplied({
+            id: r.job.id || r.job.href,
+            title: r.job.title,
+            company: r.job.company,
+            city: props.city,
+            track: props.jobLabel,
+            href: r.job.href,
+            greeting: r.greeting.trim(),
+            date: Date.now(),
+            synced: false,
+          });
           set(i, { status: "sent" });
         } else {
           set(i, { status: "failed", error: "未确认发送" });

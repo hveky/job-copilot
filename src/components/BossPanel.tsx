@@ -5,13 +5,22 @@ import {
   bossSearch,
   bossFetchJd,
   bossReplies,
+  feishuSync,
   type BossJob,
   type BossReplies,
 } from "../lib/tauri";
 import { cityCode } from "../data/cities";
 import { ApplyModal } from "./ApplyModal";
 import { BatchApplyModal } from "./BatchApplyModal";
-import { getDaily, loadApplied, markApplied } from "../lib/ledger";
+import {
+  addRecord,
+  getDaily,
+  loadApplied,
+  markSynced,
+  unsyncedRecords,
+  type ApplyRecord,
+} from "../lib/ledger";
+import { buildFeishuRecords } from "../lib/feishu";
 import type { GatewayConfig } from "../gateway/types";
 
 // BOSS 投递台(Phase B step1-3b):登录 → 抓 JD → 审核后半自动投递(单条/批量)。
@@ -24,6 +33,10 @@ export function BossPanel(props: {
   dailyCap: number;
   delayMin: number;
   delayMax: number;
+  feishuAppId: string;
+  feishuAppSecret: string;
+  feishuBaseToken: string;
+  feishuTableId: string;
   onPickJd: (jd: string) => void;
 }) {
   const [err, setErr] = useState("");
@@ -50,9 +63,41 @@ export function BossPanel(props: {
     }
   }
 
-  function handleApplied(id: string) {
-    markApplied(id);
-    setAppliedIds((s) => new Set(s).add(id));
+  const [syncing, setSyncing] = useState(false);
+  const [syncNote, setSyncNote] = useState("");
+
+  function handleApplied(rec: ApplyRecord) {
+    addRecord(rec);
+    setAppliedIds((s) => new Set(s).add(rec.id));
+  }
+
+  async function syncFeishu() {
+    setSyncNote("");
+    if (!props.feishuAppId || !props.feishuAppSecret) {
+      setSyncNote("请先在「设置 → 飞书」填 app_id / app_secret。");
+      return;
+    }
+    const recs = unsyncedRecords();
+    if (recs.length === 0) {
+      setSyncNote("没有待同步的投递记录。");
+      return;
+    }
+    setSyncing(true);
+    try {
+      const n = await feishuSync(
+        props.feishuAppId,
+        props.feishuAppSecret,
+        props.feishuBaseToken,
+        props.feishuTableId,
+        buildFeishuRecords(recs),
+      );
+      markSynced(recs.map((r) => r.id));
+      setSyncNote(`已同步 ${n} 条到飞书多维表格。`);
+    } catch (e) {
+      setSyncNote("同步失败:" + String(e));
+    } finally {
+      setSyncing(false);
+    }
   }
 
   async function open() {
@@ -153,9 +198,13 @@ export function BossPanel(props: {
         <button className="ghost" disabled={refreshing} onClick={refreshReplies}>
           {refreshing ? "刷新中…" : "刷新回复"}
         </button>
+        <button className="ghost" disabled={syncing} onClick={syncFeishu}>
+          {syncing ? "同步中…" : "同步飞书"}
+        </button>
         <span className="tier-pill">step 3b · 半自动投递</span>
       </div>
       {err && <div className="err">{err}</div>}
+      {syncNote && <div className="hint" style={{ marginTop: 6 }}>{syncNote}</div>}
 
       {replies && (
         <div className="funnel">
@@ -212,6 +261,7 @@ export function BossPanel(props: {
         <ApplyModal
           gateway={props.gateway}
           jobLabel={props.job}
+          city={props.city}
           bossJob={applyJob}
           resume={props.resume}
           instruction={props.instruction}
@@ -225,13 +275,14 @@ export function BossPanel(props: {
           gateway={props.gateway}
           jobs={jobs}
           jobLabel={props.job}
+          city={props.city}
           resume={props.resume}
           instruction={props.instruction}
           dailyCap={props.dailyCap}
           delayMin={props.delayMin}
           delayMax={props.delayMax}
           onClose={() => setShowBatch(false)}
-          onAppliedId={handleApplied}
+          onApplied={handleApplied}
         />
       )}
     </div>

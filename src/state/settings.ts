@@ -17,6 +17,10 @@ export interface Settings {
   delayMax: number; // 投递最大间隔(秒)
   workspaceDir: string; // 文件 agent 的求职工作区根目录
   sidebarWidth: number; // 右侧边栏宽度(可拖拽)
+  feishuAppId: string; // 飞书自建应用 app_id
+  feishuAppSecret: string; // 飞书自建应用 app_secret
+  feishuBaseToken: string; // 多维表格 base_token
+  feishuTableId: string; // 表 id
 }
 
 const KEY = "qzc.settings.v1";
@@ -45,6 +49,10 @@ export const DEFAULT_SETTINGS: Settings = {
   delayMax: 100,
   workspaceDir: "",
   sidebarWidth: 392,
+  feishuAppId: "",
+  feishuAppSecret: "",
+  feishuBaseToken: "FWcdbn7uKaQrmcstVMUcc2UhnKC",
+  feishuTableId: "tblUzqF9C2Leljof",
 };
 
 export function loadSettings(): Settings {

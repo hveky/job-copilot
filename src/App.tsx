@@ -125,6 +125,10 @@ export function App() {
             dailyCap={settings.dailyCap}
             delayMin={settings.delayMin}
             delayMax={settings.delayMax}
+            feishuAppId={settings.feishuAppId}
+            feishuAppSecret={settings.feishuAppSecret}
+            feishuBaseToken={settings.feishuBaseToken}
+            feishuTableId={settings.feishuTableId}
             onPickJd={setJd}
           />
           <ContentPanel

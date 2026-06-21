@@ -94,6 +94,25 @@ export async function fsWrite(
   await invoke("fs_write", { root, path, content });
 }
 
+/** 同步记录到飞书多维表格,返回写入条数。 */
+export async function feishuSync(
+  appId: string,
+  appSecret: string,
+  baseToken: string,
+  tableId: string,
+  records: unknown[],
+): Promise<number> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  const n = await invoke<string>("feishu_sync", {
+    appId,
+    appSecret,
+    baseToken,
+    tableId,
+    records: JSON.stringify(records),
+  });
+  return Number(n) || 0;
+}
+
 export interface BossReplies {
   total: number;
   withReply: number;

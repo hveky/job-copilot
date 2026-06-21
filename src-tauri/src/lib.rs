@@ -304,6 +304,58 @@ fn fs_write(root: String, path: String, content: String) -> Result<(), String> {
     std::fs::write(&p, content).map_err(|e| e.to_string())
 }
 
+/// 飞书多维表格写入:用 app_id/secret 换 tenant_access_token,再 batch_create 记录。
+/// records 为前端构造好的 JSON 数组字符串:[{"fields":{...}}, ...]。
+#[tauri::command]
+async fn feishu_sync(
+    app_id: String,
+    app_secret: String,
+    base_token: String,
+    table_id: String,
+    records: String,
+) -> Result<String, String> {
+    let client = reqwest::Client::new();
+    // 1. tenant_access_token
+    let tok = client
+        .post("https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal")
+        .json(&serde_json::json!({ "app_id": app_id, "app_secret": app_secret }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())?;
+    let token = tok["tenant_access_token"]
+        .as_str()
+        .ok_or_else(|| format!("获取 token 失败: {}", tok))?;
+    // 2. batch_create
+    let recs: serde_json::Value =
+        serde_json::from_str(&records).map_err(|e| format!("记录 JSON 解析失败: {}", e))?;
+    let url = format!(
+        "https://open.feishu.cn/open-apis/bitable/v1/apps/{}/tables/{}/records/batch_create",
+        base_token, table_id
+    );
+    let j = client
+        .post(&url)
+        .bearer_auth(token)
+        .json(&serde_json::json!({ "records": recs }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())?;
+    if j["code"].as_i64() == Some(0) {
+        let n = j["data"]["records"]
+            .as_array()
+            .map(|a| a.len())
+            .unwrap_or(0);
+        Ok(n.to_string())
+    } else {
+        Err(format!("飞书写入失败: {}", j))
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -325,7 +377,8 @@ pub fn run() {
             boss_replies,
             fs_list,
             fs_read,
-            fs_write
+            fs_write,
+            feishu_sync
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

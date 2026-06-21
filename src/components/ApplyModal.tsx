@@ -3,6 +3,7 @@ import { chat, GatewayError } from "../gateway/client";
 import type { GatewayConfig } from "../gateway/types";
 import { greetingSystem, greetingUser } from "../prompts/templates";
 import { bossApply, bossFetchJd, type BossJob } from "../lib/tauri";
+import type { ApplyRecord } from "../lib/ledger";
 
 type Phase = "loading" | "review" | "applying" | "done" | "error";
 
@@ -10,11 +11,12 @@ type Phase = "loading" | "review" | "applying" | "done" | "error";
 export function ApplyModal(props: {
   gateway: GatewayConfig;
   jobLabel: string;
+  city: string;
   bossJob: BossJob;
   resume: string;
   instruction: string;
   onClose: () => void;
-  onApplied: (jobId: string) => void;
+  onApplied: (rec: ApplyRecord) => void;
 }) {
   const [phase, setPhase] = useState<Phase>("loading");
   const [greeting, setGreeting] = useState("");
@@ -79,7 +81,17 @@ export function ApplyModal(props: {
       const r = await bossApply(props.bossJob.href, greeting.trim());
       setOk(r.ok);
       setPhase("done");
-      props.onApplied(props.bossJob.id || props.bossJob.href);
+      props.onApplied({
+        id: props.bossJob.id || props.bossJob.href,
+        title: props.bossJob.title,
+        company: props.bossJob.company,
+        city: props.city,
+        track: props.jobLabel,
+        href: props.bossJob.href,
+        greeting: greeting.trim(),
+        date: Date.now(),
+        synced: false,
+      });
     } catch (e) {
       setErr(String(e));
       setPhase("error");

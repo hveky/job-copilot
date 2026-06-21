@@ -90,6 +90,41 @@ export function SettingsModal(props: {
           </div>
         </div>
 
+        <label className="field">飞书同步(可选 · 自建应用)</label>
+        <p className="hint" style={{ marginTop: 0 }}>
+          在飞书开放平台建自建应用拿 app_id/secret,并把多维表格分享给该应用(可编辑)。
+        </p>
+        <div className="row" style={{ gap: 12 }}>
+          <div style={{ flex: 1 }}>
+            <span className="hint">app_id</span>
+            <input value={s.feishuAppId} onChange={(e) => set("feishuAppId", e.target.value)} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <span className="hint">app_secret</span>
+            <input
+              type="password"
+              value={s.feishuAppSecret}
+              onChange={(e) => set("feishuAppSecret", e.target.value)}
+            />
+          </div>
+        </div>
+        <div className="row" style={{ gap: 12 }}>
+          <div style={{ flex: 1 }}>
+            <span className="hint">base_token</span>
+            <input
+              value={s.feishuBaseToken}
+              onChange={(e) => set("feishuBaseToken", e.target.value)}
+            />
+          </div>
+          <div style={{ flex: 1 }}>
+            <span className="hint">table_id</span>
+            <input
+              value={s.feishuTableId}
+              onChange={(e) => set("feishuTableId", e.target.value)}
+            />
+          </div>
+        </div>
+
         <div className="actions">
           <button className="ghost" onClick={props.onClose}>
             取消

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { Settings } from "../state/settings";
 import { feishuOAuth } from "../lib/tauri";
+import { BUILTIN_FEISHU, hasBuiltinFeishu } from "../config/feishu";
 
 export function SettingsModal(props: {
   initial: Settings;
@@ -14,18 +15,17 @@ export function SettingsModal(props: {
   const [authNote, setAuthNote] = useState("");
 
   async function feishuAuth() {
-    if (!s.feishuAppId || !s.feishuAppSecret) {
-      setAuthNote("请先填 client_id / client_secret(飞书自建应用的凭证)。");
+    const cid = s.feishuAppId || BUILTIN_FEISHU.clientId;
+    const csec = s.feishuAppSecret || BUILTIN_FEISHU.clientSecret;
+    const redir = s.feishuRedirectUri || BUILTIN_FEISHU.redirectUri;
+    if (!cid || !csec) {
+      setAuthNote("请先填 client_id / client_secret(或在 config/feishu.ts 内置)。");
       return;
     }
     setAuthNote("");
     setAuthing(true);
     try {
-      const token = await feishuOAuth(
-        s.feishuAppId,
-        s.feishuAppSecret,
-        s.feishuRedirectUri,
-      );
+      const token = await feishuOAuth(cid, csec, redir);
       set("feishuUserToken", token);
       setAuthNote("✓ 已授权,记得点保存。");
     } catch (e) {
@@ -116,29 +116,37 @@ export function SettingsModal(props: {
         </div>
 
         <label className="field">飞书同步(可选)</label>
-        <p className="hint" style={{ marginTop: 0 }}>
-          需一个飞书应用的 client_id/secret 当 OAuth 客户端,并在其后台「安全设置」登记下面的重定向 URL。
-          <strong>推荐用账号授权</strong>:以你本人身份写表,无需把表分享给机器人。
-        </p>
-        <div className="row" style={{ gap: 12 }}>
-          <div style={{ flex: 1 }}>
-            <span className="hint">client_id(app_id)</span>
-            <input value={s.feishuAppId} onChange={(e) => set("feishuAppId", e.target.value)} />
-          </div>
-          <div style={{ flex: 1 }}>
-            <span className="hint">client_secret(app_secret)</span>
+        {hasBuiltinFeishu() ? (
+          <p className="hint" style={{ marginTop: 0 }}>
+            已内置应用,<strong>直接点下面「用飞书账号授权」</strong>,以你本人身份写表,无需任何配置。
+          </p>
+        ) : (
+          <>
+            <p className="hint" style={{ marginTop: 0 }}>
+              需一个飞书应用的 client_id/secret 当 OAuth 客户端,并在其后台「安全设置」登记重定向 URL。
+              (产品方可把凭证内置到 <code>config/feishu.ts</code>,则用户零配置。)
+            </p>
+            <div className="row" style={{ gap: 12 }}>
+              <div style={{ flex: 1 }}>
+                <span className="hint">client_id(app_id)</span>
+                <input value={s.feishuAppId} onChange={(e) => set("feishuAppId", e.target.value)} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <span className="hint">client_secret(app_secret)</span>
+                <input
+                  type="password"
+                  value={s.feishuAppSecret}
+                  onChange={(e) => set("feishuAppSecret", e.target.value)}
+                />
+              </div>
+            </div>
+            <span className="hint">重定向 URL(登记到飞书应用后台)</span>
             <input
-              type="password"
-              value={s.feishuAppSecret}
-              onChange={(e) => set("feishuAppSecret", e.target.value)}
+              value={s.feishuRedirectUri}
+              onChange={(e) => set("feishuRedirectUri", e.target.value)}
             />
-          </div>
-        </div>
-        <span className="hint">重定向 URL(登记到飞书应用后台)</span>
-        <input
-          value={s.feishuRedirectUri}
-          onChange={(e) => set("feishuRedirectUri", e.target.value)}
-        />
+          </>
+        )}
         <div className="row" style={{ marginTop: 8 }}>
           <button className="primary" disabled={authing} onClick={feishuAuth}>
             {authing ? "授权中…" : "用飞书账号授权"}

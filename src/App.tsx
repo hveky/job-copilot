@@ -12,6 +12,7 @@ import {
   toGatewayConfig,
   type Settings,
 } from "./state/settings";
+import { BUILTIN_FEISHU } from "./config/feishu";
 
 type SbTab = "copilot" | "instruction" | "files";
 
@@ -125,8 +126,8 @@ export function App() {
             dailyCap={settings.dailyCap}
             delayMin={settings.delayMin}
             delayMax={settings.delayMax}
-            feishuAppId={settings.feishuAppId}
-            feishuAppSecret={settings.feishuAppSecret}
+            feishuAppId={settings.feishuAppId || BUILTIN_FEISHU.clientId}
+            feishuAppSecret={settings.feishuAppSecret || BUILTIN_FEISHU.clientSecret}
             feishuUserToken={settings.feishuUserToken}
             feishuBaseToken={settings.feishuBaseToken}
             feishuTableId={settings.feishuTableId}

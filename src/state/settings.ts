@@ -21,6 +21,8 @@ export interface Settings {
   feishuAppSecret: string; // 飞书自建应用 app_secret
   feishuBaseToken: string; // 多维表格 base_token
   feishuTableId: string; // 表 id
+  feishuRedirectUri: string; // OAuth 重定向(需在飞书应用后台登记)
+  feishuUserToken: string; // 飞书账号授权后的 user_access_token
 }
 
 const KEY = "qzc.settings.v1";
@@ -53,6 +55,8 @@ export const DEFAULT_SETTINGS: Settings = {
   feishuAppSecret: "",
   feishuBaseToken: "FWcdbn7uKaQrmcstVMUcc2UhnKC",
   feishuTableId: "tblUzqF9C2Leljof",
+  feishuRedirectUri: "http://localhost:14520/feishu/callback",
+  feishuUserToken: "",
 };
 
 export function loadSettings(): Settings {

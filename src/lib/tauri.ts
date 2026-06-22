@@ -94,10 +94,21 @@ export async function fsWrite(
   await invoke("fs_write", { root, path, content });
 }
 
-/** 同步记录到飞书多维表格,返回写入条数。 */
+/** 飞书账号授权(OAuth),返回 user_access_token。 */
+export async function feishuOAuth(
+  clientId: string,
+  clientSecret: string,
+  redirectUri: string,
+): Promise<string> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<string>("feishu_oauth", { clientId, clientSecret, redirectUri });
+}
+
+/** 同步记录到飞书多维表格。userToken 非空则以账号身份写。返回写入条数。 */
 export async function feishuSync(
   appId: string,
   appSecret: string,
+  userToken: string,
   baseToken: string,
   tableId: string,
   records: unknown[],
@@ -106,6 +117,7 @@ export async function feishuSync(
   const n = await invoke<string>("feishu_sync", {
     appId,
     appSecret,
+    userToken,
     baseToken,
     tableId,
     records: JSON.stringify(records),

@@ -304,30 +304,111 @@ fn fs_write(root: String, path: String, content: String) -> Result<(), String> {
     std::fs::write(&p, content).map_err(|e| e.to_string())
 }
 
-/// 飞书多维表格写入:用 app_id/secret 换 tenant_access_token,再 batch_create 记录。
-/// records 为前端构造好的 JSON 数组字符串:[{"fields":{...}}, ...]。
+/// 飞书授权登录(账号):开授权 WebView,拦截重定向拿 code,换 user_access_token。
+/// 返回 access_token(以用户身份写表,无需把表分享给机器人)。
 #[tauri::command]
-async fn feishu_sync(
-    app_id: String,
-    app_secret: String,
-    base_token: String,
-    table_id: String,
-    records: String,
+async fn feishu_oauth(
+    app: tauri::AppHandle,
+    client_id: String,
+    client_secret: String,
+    redirect_uri: String,
 ) -> Result<String, String> {
+    let auth_url = format!(
+        "https://accounts.feishu.cn/open-apis/authen/v1/authorize?client_id={}&redirect_uri={}&scope={}&state=qzc",
+        urlencoding::encode(&client_id),
+        urlencoding::encode(&redirect_uri),
+        urlencoding::encode("bitable:app offline_access")
+    );
+    if let Some(w) = app.get_webview_window("feishu-auth") {
+        let _ = w.close();
+    }
+    let (tx, rx) = tokio::sync::oneshot::channel::<String>();
+    let tx = Arc::new(Mutex::new(Some(tx)));
+    let redir = redirect_uri.clone();
+    let txc = tx.clone();
+    let url: tauri::Url = auth_url.parse().map_err(|_| "授权 URL 无效".to_string())?;
+    tauri::WebviewWindowBuilder::new(&app, "feishu-auth", tauri::WebviewUrl::External(url))
+        .title("飞书账号授权")
+        .inner_size(520.0, 720.0)
+        .on_navigation(move |u| {
+            if u.as_str().starts_with(&redir) {
+                if let Some((_, code)) = u.query_pairs().find(|(k, _)| k == "code") {
+                    if let Some(tx) = txc.lock().unwrap().take() {
+                        let _ = tx.send(code.to_string());
+                    }
+                    return false;
+                }
+            }
+            true
+        })
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let code = match tokio::time::timeout(Duration::from_secs(180), rx).await {
+        Ok(Ok(c)) => c,
+        _ => {
+            if let Some(w) = app.get_webview_window("feishu-auth") {
+                let _ = w.close();
+            }
+            return Err("授权超时或已取消".into());
+        }
+    };
+    if let Some(w) = app.get_webview_window("feishu-auth") {
+        let _ = w.close();
+    }
+
     let client = reqwest::Client::new();
-    // 1. tenant_access_token
-    let tok = client
-        .post("https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal")
-        .json(&serde_json::json!({ "app_id": app_id, "app_secret": app_secret }))
+    let j = client
+        .post("https://open.feishu.cn/open-apis/authen/v2/oauth/token")
+        .json(&serde_json::json!({
+            "grant_type": "authorization_code",
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "code": code,
+            "redirect_uri": redirect_uri
+        }))
         .send()
         .await
         .map_err(|e| e.to_string())?
         .json::<serde_json::Value>()
         .await
         .map_err(|e| e.to_string())?;
-    let token = tok["tenant_access_token"]
+    j["access_token"]
         .as_str()
-        .ok_or_else(|| format!("获取 token 失败: {}", tok))?;
+        .map(|s| s.to_string())
+        .ok_or_else(|| format!("换取 user token 失败: {}", j))
+}
+
+/// 飞书多维表格写入。user_token 非空则以用户身份写;否则用 app_id/secret 走应用身份。
+/// records 为前端构造好的 JSON 数组字符串:[{"fields":{...}}, ...]。
+#[tauri::command]
+async fn feishu_sync(
+    app_id: String,
+    app_secret: String,
+    user_token: String,
+    base_token: String,
+    table_id: String,
+    records: String,
+) -> Result<String, String> {
+    let client = reqwest::Client::new();
+    // 1. 取 token:优先用户身份
+    let token = if !user_token.is_empty() {
+        user_token
+    } else {
+        let tok = client
+            .post("https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal")
+            .json(&serde_json::json!({ "app_id": app_id, "app_secret": app_secret }))
+            .send()
+            .await
+            .map_err(|e| e.to_string())?
+            .json::<serde_json::Value>()
+            .await
+            .map_err(|e| e.to_string())?;
+        tok["tenant_access_token"]
+            .as_str()
+            .ok_or_else(|| format!("获取 token 失败: {}", tok))?
+            .to_string()
+    };
     // 2. batch_create
     let recs: serde_json::Value =
         serde_json::from_str(&records).map_err(|e| format!("记录 JSON 解析失败: {}", e))?;
@@ -378,7 +459,8 @@ pub fn run() {
             fs_list,
             fs_read,
             fs_write,
-            feishu_sync
+            feishu_sync,
+            feishu_oauth
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

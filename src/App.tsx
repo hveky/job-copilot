@@ -127,6 +127,7 @@ export function App() {
             delayMax={settings.delayMax}
             feishuAppId={settings.feishuAppId}
             feishuAppSecret={settings.feishuAppSecret}
+            feishuUserToken={settings.feishuUserToken}
             feishuBaseToken={settings.feishuBaseToken}
             feishuTableId={settings.feishuTableId}
             onPickJd={setJd}

@@ -35,6 +35,7 @@ export function BossPanel(props: {
   delayMax: number;
   feishuAppId: string;
   feishuAppSecret: string;
+  feishuUserToken: string;
   feishuBaseToken: string;
   feishuTableId: string;
   onPickJd: (jd: string) => void;
@@ -73,8 +74,8 @@ export function BossPanel(props: {
 
   async function syncFeishu() {
     setSyncNote("");
-    if (!props.feishuAppId || !props.feishuAppSecret) {
-      setSyncNote("请先在「设置 → 飞书」填 app_id / app_secret。");
+    if (!props.feishuUserToken && (!props.feishuAppId || !props.feishuAppSecret)) {
+      setSyncNote("请先在「设置 → 飞书」用账号授权,或填 app_id / app_secret。");
       return;
     }
     const recs = unsyncedRecords();
@@ -87,6 +88,7 @@ export function BossPanel(props: {
       const n = await feishuSync(
         props.feishuAppId,
         props.feishuAppSecret,
+        props.feishuUserToken,
         props.feishuBaseToken,
         props.feishuTableId,
         buildFeishuRecords(recs),

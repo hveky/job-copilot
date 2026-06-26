@@ -1,18 +1,23 @@
 import { useState } from "react";
 import { chat, GatewayError } from "../gateway/client";
 import type { GatewayConfig } from "../gateway/types";
-import { JOB_PRESETS } from "../prompts/tracks";
 import { recommendSystem, recommendUser } from "../prompts/templates";
 import { CITIES } from "../data/cities";
+
+const HISTORY_MAX = 12;
 
 export function JobPicker(props: {
   gateway: GatewayConfig;
   resume: string;
   targetJobs: string[];
   activeJob: string;
+  jobHistory: string[];
+  cities: string[];
   city: string;
   onJobsChange: (jobs: string[]) => void;
   onActiveChange: (job: string) => void;
+  onHistoryChange: (history: string[]) => void;
+  onCitiesChange: (cities: string[]) => void;
   onCityChange: (city: string) => void;
 }) {
   const [custom, setCustom] = useState("");
@@ -28,6 +33,9 @@ export function JobPicker(props: {
       props.onJobsChange([...props.targetJobs, j]);
     }
     props.onActiveChange(j);
+    // 记入历史(最近优先、去重、限长)
+    const hist = [j, ...props.jobHistory.filter((h) => h !== j)].slice(0, HISTORY_MAX);
+    props.onHistoryChange(hist);
   }
 
   function removeJob(job: string) {
@@ -36,7 +44,24 @@ export function JobPicker(props: {
     if (props.activeJob === job) props.onActiveChange(next[0] ?? "");
   }
 
+  function addCity(label: string) {
+    const c = label.trim();
+    if (!c) return;
+    if (!props.cities.includes(c)) props.onCitiesChange([...props.cities, c]);
+    props.onCityChange(c);
+  }
+
+  function removeCity(label: string) {
+    const next = props.cities.filter((c) => c !== label);
+    props.onCitiesChange(next);
+    if (props.city === label) props.onCityChange(next[0] ?? "");
+  }
+
   async function recommend() {
+    if (!props.resume.trim() && !wish.trim()) {
+      setErr("先填简历(首次启动会引导,或在「文件」面板编辑 resumes),或在上面输入你想投的方向。");
+      return;
+    }
     setErr("");
     setRecing(true);
     setRecs([]);
@@ -50,12 +75,12 @@ export function JobPicker(props: {
         maxTokens: 400,
       });
       const list = out
-        .split("\n")
-        .map((s) => s.replace(/^[-*\d.、\s]+/, "").trim())
-        .filter((s) => s && s.length <= 20)
+        .split(/[\n、,，]/)
+        .map((s) => s.replace(/^[-*\d.\s]+/, "").trim())
+        .filter((s) => s && s.length <= 30)
         .slice(0, 8);
       setRecs(list);
-      if (!list.length) setErr("没解析到推荐岗位,换个说法再试。");
+      if (!list.length) setErr("没解析到推荐岗位,换个说法或补充简历再试。");
     } catch (e) {
       setErr(e instanceof GatewayError ? e.message : String(e));
     } finally {
@@ -63,9 +88,10 @@ export function JobPicker(props: {
     }
   }
 
-  const presetSuggest = JOB_PRESETS.map((p) => p.label).filter(
+  const historySuggest = props.jobHistory.filter(
     (l) => !props.targetJobs.includes(l),
   );
+  const cityOptions = CITIES.filter((c) => !props.cities.includes(c.label));
 
   return (
     <div className="card">
@@ -127,25 +153,13 @@ export function JobPicker(props: {
         >
           添加
         </button>
-        <span className="hint">城市</span>
-        <select
-          style={{ width: 110 }}
-          value={props.city}
-          onChange={(e) => props.onCityChange(e.target.value)}
-        >
-          {CITIES.map((c) => (
-            <option key={c.code} value={c.label}>
-              {c.label}
-            </option>
-          ))}
-        </select>
       </div>
 
-      {presetSuggest.length > 0 && (
+      {historySuggest.length > 0 && (
         <div style={{ marginTop: 10 }}>
-          <span className="hint">快捷建议:</span>
+          <span className="hint">历史选择:</span>
           <div className="tracks" style={{ marginTop: 6 }}>
-            {presetSuggest.map((l) => (
+            {historySuggest.map((l) => (
               <span key={l} className="chip chip-add" onClick={() => addJob(l)}>
                 + {l}
               </span>
@@ -153,6 +167,50 @@ export function JobPicker(props: {
           </div>
         </div>
       )}
+
+      <div style={{ marginTop: 12 }}>
+        <div className="row" style={{ gap: 8 }}>
+          <span className="hint">城市</span>
+          <select
+            style={{ width: 120 }}
+            value=""
+            onChange={(e) => {
+              if (e.target.value) addCity(e.target.value);
+            }}
+          >
+            <option value="">+ 添加城市</option>
+            {cityOptions.map((c) => (
+              <option key={c.code} value={c.label}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+          <span className="hint">点城市设为当前(用于搜索)</span>
+        </div>
+        <div className="tracks" style={{ marginTop: 6 }}>
+          {props.cities.length === 0 && (
+            <span className="hint">还没选城市,从上面下拉添加。</span>
+          )}
+          {props.cities.map((c) => (
+            <span
+              key={c}
+              className={"chip" + (c === props.city ? " active" : "")}
+              onClick={() => props.onCityChange(c)}
+            >
+              {c}
+              <span
+                className="chip-x"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  removeCity(c);
+                }}
+              >
+                ×
+              </span>
+            </span>
+          ))}
+        </div>
+      </div>
 
       <div style={{ marginTop: 12, borderTop: "1px solid var(--border)", paddingTop: 12 }}>
         <div className="row" style={{ gap: 8 }}>

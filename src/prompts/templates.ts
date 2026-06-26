@@ -1,10 +1,25 @@
 // Prompt 模板:B 线内容包生成 + 回复助手系统提示 + AI 荐岗。
 import { biasForJob } from "./tracks";
 
-/** 把主控指令拼到 system 最前面(CLAUDE.md 式注入)。 */
-function withInstruction(instruction: string | undefined, base: string): string {
+/**
+ * 隐藏的系统级默认指令:始终注入每次 AI 调用,用户看不到也不能改。
+ * 给模型交代工作区结构与总目标。
+ */
+export const SYSTEM_DEFAULT_INSTRUCTION = [
+  "工作区文件树固定为四个文件夹:preps(应试内容包)、talk(话术与 HR 常见问题应对/反问)、jds(岗位 JD)、resumes(简历)。",
+  "你的任务是帮助用户找到工作。",
+].join("\n");
+
+/** 把系统默认 + 用户主控指令拼到 system 最前面(CLAUDE.md 式注入)。 */
+export function withInstruction(
+  instruction: string | undefined,
+  base: string,
+): string {
   const ins = instruction?.trim();
-  return ins ? `${ins}\n\n---\n${base}` : base;
+  const head = ins
+    ? `${SYSTEM_DEFAULT_INSTRUCTION}\n\n${ins}`
+    : SYSTEM_DEFAULT_INSTRUCTION;
+  return `${head}\n\n---\n${base}`;
 }
 
 /** B 线:JD → 完整应试内容包(对应工作区五职责)。输出结构化 Markdown。 */

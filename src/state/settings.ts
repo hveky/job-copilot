@@ -10,7 +10,9 @@ export interface Settings {
   instruction: string; // 主控指令(CLAUDE.md 式),注入每次 AI 调用的 system 前缀
   targetJobs: string[]; // 用户确认的目标岗位关键词集合
   activeJob: string; // 当前用于定位的岗位(targetJobs 之一)
-  city: string; // 选中城市(label),码见 data/cities.ts
+  jobHistory: string[]; // 历史选择过的岗位(最近优先,用于「历史选择」建议)
+  cities: string[]; // 已选城市列表(label)
+  city: string; // 当前城市(label,cities 之一,下游搜索用),码见 data/cities.ts
   theme: "light" | "dark"; // 界面主题
   dailyCap: number; // 单日投递上限(防风控)
   delayMin: number; // 投递最小间隔(秒)
@@ -23,6 +25,7 @@ export interface Settings {
   feishuTableId: string; // 表 id
   feishuRedirectUri: string; // OAuth 重定向(需在飞书应用后台登记)
   feishuUserToken: string; // 飞书账号授权后的 user_access_token
+  bridgeToken: string; // 与 BOSS 扩展约定的入站推送令牌(X-Copilot-Token)
 }
 
 const KEY = "qzc.settings.v1";
@@ -37,13 +40,15 @@ export const DEFAULT_INSTRUCTION = `# 主控指令(我的偏好,适用于所有�
 
 export const DEFAULT_SETTINGS: Settings = {
   dsKey: "",
-  dsBaseUrl: "/api/ds/anthropic", // dev 代理 → api.deepseek.com/anthropic
+  dsBaseUrl: "https://api.deepseek.com/anthropic", // 绝对端点;桌面经 Rust 发出免 CORS,web dev 由客户端改写回 /api/ds 代理
   modelFlash: "deepseek-v4-flash",
   modelPro: "deepseek-v4-pro",
   resume: "",
-  instruction: DEFAULT_INSTRUCTION,
-  targetJobs: ["AI / Agent"],
-  activeJob: "AI / Agent",
+  instruction: "",
+  targetJobs: [],
+  activeJob: "",
+  jobHistory: [],
+  cities: ["广州"],
   city: "广州",
   theme: "light",
   dailyCap: 30,
@@ -57,16 +62,31 @@ export const DEFAULT_SETTINGS: Settings = {
   feishuTableId: "tblUzqF9C2Leljof",
   feishuRedirectUri: "http://localhost:14520/feishu/callback",
   feishuUserToken: "",
+  bridgeToken: "job-copilot-local",
 };
 
 export function loadSettings(): Settings {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+    if (raw) return migrate({ ...DEFAULT_SETTINGS, ...JSON.parse(raw) });
   } catch {
     /* ignore */
   }
   return { ...DEFAULT_SETTINGS };
+}
+
+/**
+ * 旧版本 localStorage 迁移:把失效的 dev 代理 base_url 与不存在的模型名换成新默认,
+ * 但保留用户已填的 dsKey。避免旧值掩盖 EXE 的网络修复。
+ */
+function migrate(s: Settings): Settings {
+  const next = { ...s };
+  // 仅修真正失效的 dev 代理 base_url;模型名尊重用户配置,不动。
+  if (/\/api\/ds/.test(next.dsBaseUrl)) next.dsBaseUrl = DEFAULT_SETTINGS.dsBaseUrl;
+  if (!Array.isArray(next.cities) || next.cities.length === 0)
+    next.cities = next.city ? [next.city] : [...DEFAULT_SETTINGS.cities];
+  if (!Array.isArray(next.jobHistory)) next.jobHistory = [];
+  return next;
 }
 
 export function saveSettings(s: Settings): void {

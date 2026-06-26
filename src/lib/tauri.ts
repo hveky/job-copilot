@@ -68,11 +68,24 @@ export async function bossFetchJd(url: string): Promise<BossJd> {
   return JSON.parse(json) as BossJd;
 }
 
+/**
+ * 订阅「BOSS 扩展推送了岗位」事件(Rust 桥接服务在写完 jds/ 后 emit)。
+ * 返回取消订阅函数;非桌面环境是空操作。
+ */
+export async function listenJobsReceived(
+  cb: (written: number) => void,
+): Promise<() => void> {
+  if (!isDesktop()) return () => {};
+  const { listen } = await import("@tauri-apps/api/event");
+  const un = await listen<number>("jobs-received", (e) => cb(e.payload ?? 0));
+  return un;
+}
+
 // ===== 文件 agent =====
-export async function pickFolder(): Promise<string | null> {
-  const { open } = await import("@tauri-apps/plugin-dialog");
-  const res = await open({ directory: true, multiple: false });
-  return typeof res === "string" ? res : null;
+/** 固定数据根目录(用户主目录下 job-copilot),Rust 会确保 preps/talk/jds/resumes 存在。 */
+export async function dataRoot(): Promise<string> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<string>("data_root");
 }
 
 export async function fsList(root: string): Promise<string[]> {
@@ -83,6 +96,22 @@ export async function fsList(root: string): Promise<string[]> {
 export async function fsRead(root: string, path: string): Promise<string> {
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<string>("fs_read", { root, path });
+}
+
+/** 读取 resumes/ 下所有文本文件并拼接为简历文本(用于生成/荐岗/话术)。 */
+export async function readResume(
+  root: string,
+): Promise<{ text: string; count: number }> {
+  const files = (await fsList(root)).filter((p) => p.startsWith("resumes/"));
+  const parts: string[] = [];
+  for (const f of files) {
+    try {
+      parts.push(await fsRead(root, f));
+    } catch {
+      /* skip unreadable */
+    }
+  }
+  return { text: parts.join("\n\n").trim(), count: files.length };
 }
 
 export async function fsWrite(

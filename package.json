@@ -8,11 +8,13 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc -b --noEmit"
+    "typecheck": "tsc -b --noEmit",
+    "tauri": "tauri"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-dialog": "^2.7.1",
+    "@tauri-apps/plugin-http": "^2.5.2",
     "@types/dompurify": "^3.0.5",
     "dompurify": "^3.4.11",
     "marked": "^18.0.5",

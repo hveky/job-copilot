@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { chatToolsRaw } from "../gateway/client";
 import type { GatewayConfig } from "../gateway/types";
-import { fsList, fsRead, fsWrite, pickFolder } from "../lib/tauri";
+import { fsList, fsRead, fsWrite } from "../lib/tauri";
 import { MarkdownView } from "./MarkdownView";
 import { renderMd } from "../lib/markdown";
+import { SYSTEM_DEFAULT_INSTRUCTION } from "../prompts/templates";
 
 const TOOLS = [
   {
@@ -40,7 +41,10 @@ function agentSystem(instruction: string): string {
     "用户让你改什么,先用 read_file 看清当前内容,再用 write_file 提交修改(会让用户确认后才真正落盘)。",
     "改简历/话术时:成果量化、用 STAR、不编造未确认技能。改完简要说明改了什么。",
   ].join("\n");
-  return instruction.trim() ? `${instruction.trim()}\n\n---\n${base}` : base;
+  const head = instruction.trim()
+    ? `${SYSTEM_DEFAULT_INSTRUCTION}\n\n${instruction.trim()}`
+    : SYSTEM_DEFAULT_INSTRUCTION;
+  return `${head}\n\n---\n${base}`;
 }
 
 interface TreeNode {
@@ -87,11 +91,13 @@ interface LogItem {
 
 export function FilesPanel(props: {
   gateway: GatewayConfig;
-  workspaceDir: string;
+  root: string;
   instruction: string;
-  onSetWorkspace: (dir: string) => void;
+  fileToOpen?: string;
+  onFileOpened?: () => void;
+  onFilesChanged?: () => void;
 }) {
-  const root = props.workspaceDir;
+  const root = props.root;
   const [files, setFiles] = useState<string[]>([]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [sel, setSel] = useState("");
@@ -121,16 +127,17 @@ export function FilesPanel(props: {
   useEffect(() => {
     logRef.current?.scrollTo({ top: 1e9 });
   }, [log, running]);
+  // 外部请求打开某文件(如内容包生成后跳转)
+  useEffect(() => {
+    if (!props.fileToOpen || !root) return;
+    (async () => {
+      await refresh();
+      await openFile(props.fileToOpen!);
+      props.onFileOpened?.();
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.fileToOpen, root]);
 
-  async function chooseFolder() {
-    setErr("");
-    try {
-      const dir = await pickFolder();
-      if (dir) props.onSetWorkspace(dir);
-    } catch (e) {
-      setErr(String(e));
-    }
-  }
   async function refresh() {
     setErr("");
     try {
@@ -161,6 +168,7 @@ export function FilesPanel(props: {
     try {
       await fsWrite(root, sel, content);
       setDirty(false);
+      props.onFilesChanged?.();
     } catch (e) {
       setErr(String(e));
     }
@@ -246,6 +254,7 @@ export function FilesPanel(props: {
                 await fsWrite(root, tu.input.path, tu.input.content);
                 out = "已写入 " + tu.input.path;
                 if (tu.input.path === sel) setContent(tu.input.content);
+                props.onFilesChanged?.();
                 setLog((l) => [...l, { kind: "tool", text: "✅ 写入 " + tu.input.path }]);
               } else {
                 out = "用户拒绝了这次写入";
@@ -302,14 +311,11 @@ export function FilesPanel(props: {
     return (
       <div className="chat" style={{ justifyContent: "center" }}>
         <div className="hint" style={{ textAlign: "center" }}>
-          选择你的求职工作区文件夹(resume / talk / jds 所在),
+          文件功能仅在桌面版可用。
           <br />
-          就能浏览编辑文件、让 AI 帮你改简历话术。
+          数据保存在你的用户目录 <code>job-copilot</code> 下
           <br />
-          <br />
-          <button className="primary" onClick={chooseFolder}>
-            选择文件夹
-          </button>
+          (preps / talk / jds / resumes)。
           {err && <div className="err">{err}</div>}
         </div>
       </div>
@@ -321,10 +327,7 @@ export function FilesPanel(props: {
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: 0, flex: 1 }}>
       <div className="files-head">
-        <span className="hint files-path" title={root}>
-          {root}
-        </span>
-        <button className="small ghost" onClick={chooseFolder}>切换</button>
+        <span className="spacer" style={{ flex: 1 }} />
         <button className="small ghost" onClick={refresh}>刷新</button>
       </div>
 

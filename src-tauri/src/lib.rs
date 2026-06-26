@@ -1,7 +1,12 @@
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tauri::{Listener, Manager};
+use tauri::{Emitter, Listener, Manager};
+
+/// 与 BOSS 扩展约定的共享令牌(请求头 X-Copilot-Token)。两端需一致。
+const BRIDGE_TOKEN: &str = "job-copilot-local";
+/// 桥接服务监听端口(只绑回环地址,不暴露局域网)。
+const BRIDGE_ADDR: &str = "127.0.0.1:14530";
 
 // 抓取列表:在 BOSS 搜索页注入,等卡片+__TAURI__ 就绪后用 IPC 事件回传。
 const SCRAPE_LIST_JS: &str = r#"(function(){
@@ -287,6 +292,20 @@ fn fs_list(root: String) -> Result<Vec<String>, String> {
     Ok(out)
 }
 
+/// 返回固定数据根目录(用户主目录下 job-copilot),并确保四个子目录存在。
+#[tauri::command]
+fn data_root(app: tauri::AppHandle) -> Result<String, String> {
+    let home = app
+        .path()
+        .home_dir()
+        .map_err(|e| format!("找不到用户主目录: {}", e))?;
+    let root = home.join("job-copilot");
+    for sub in ["preps", "talk", "jds", "resumes"] {
+        std::fs::create_dir_all(root.join(sub)).map_err(|e| e.to_string())?;
+    }
+    Ok(root.to_string_lossy().to_string())
+}
+
 /// 读取工作区内某文件。
 #[tauri::command]
 fn fs_read(root: String, path: String) -> Result<String, String> {
@@ -437,10 +456,210 @@ async fn feishu_sync(
     }
 }
 
+// ===== 与 BOSS 扩展的入站桥:接收推送岗位,落到 jds/ =====
+
+/// 从 BOSS 详情页 href 提取 jobId(job_detail/<id>.html);失败时退化为 href 的 FNV 哈希。
+fn extract_job_id(href: &str) -> String {
+    if let Some(idx) = href.find("job_detail/") {
+        let rest = &href[idx + "job_detail/".len()..];
+        let id: String = rest
+            .chars()
+            .take_while(|c| !matches!(c, '.' | '?' | '/' | '&'))
+            .collect();
+        if !id.is_empty() {
+            return id;
+        }
+    }
+    let mut h: u64 = 1469598103934665603;
+    for b in href.bytes() {
+        h ^= b as u64;
+        h = h.wrapping_mul(1099511628211);
+    }
+    format!("{:x}", h)
+}
+
+/// 清掉文件名非法字符并截断到 max 字符。
+fn safe_filename(s: &str, max: usize) -> String {
+    let cleaned: String = s
+        .chars()
+        .filter(|c| {
+            !matches!(
+                c,
+                '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '\n' | '\r' | '\t'
+            )
+        })
+        .collect();
+    cleaned.trim().chars().take(max).collect()
+}
+
+/// 把一条推送岗位写入 jds/ 下的 Markdown(copilot-meta 注释 + 可读正文)。返回相对路径。
+fn write_inbox_job(root: &PathBuf, job: &serde_json::Value) -> Result<String, String> {
+    let s = |k: &str| {
+        job.get(k)
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string()
+    };
+    let title = s("title");
+    let company = s("company");
+    let salary = s("salary");
+    let href = s("href");
+    let reason = s("reason");
+    let jd = s("jd");
+    let time = s("time");
+    let query = s("query");
+    let score = job
+        .get("score")
+        .and_then(|v| v.as_i64().or_else(|| v.as_str().and_then(|x| x.parse().ok())))
+        .unwrap_or(0)
+        .clamp(0, 999);
+
+    let job_id = extract_job_id(&href);
+    let safe_title = {
+        let t = safe_filename(&title, 40);
+        if t.is_empty() {
+            "JD".to_string()
+        } else {
+            t
+        }
+    };
+    let rel = format!("jds/{:03}-{}-{}.md", score, safe_title, job_id);
+
+    let meta = serde_json::json!({
+        "score": score,
+        "title": title,
+        "company": company,
+        "salary": salary,
+        "href": href,
+        "reason": reason,
+        "query": query,
+        "source": "boss-extension",
+        "time": time,
+    });
+    let body_jd = if jd.is_empty() {
+        "(扩展未带完整 JD,可在 BOSS 打开链接查看)".to_string()
+    } else {
+        jd
+    };
+    let header_line = if company.is_empty() {
+        title.clone()
+    } else {
+        format!("{} · {}", title, company)
+    };
+    let content = format!(
+        "<!--copilot-meta {} -->\n# {}\n> 评分 {} ·（AI）{}\n> 来源 BOSS 扩展 · {}\n\n{}\n",
+        serde_json::to_string(&meta).unwrap_or_default(),
+        header_line,
+        score,
+        reason,
+        href,
+        body_jd
+    );
+
+    let p = root.join(&rel);
+    if let Some(parent) = p.parent() {
+        std::fs::create_dir_all(parent).ok();
+    }
+    std::fs::write(&p, content).map_err(|e| e.to_string())?;
+    Ok(rel)
+}
+
+/// 启动本地桥接 HTTP 服务(独立线程):接收 BOSS 扩展推送的岗位,落到 jds/,并 emit 通知前端刷新。
+/// 失败(如端口被占用)仅告警,不阻塞主程序——收件箱退化为手动粘贴 JD,原流程不受影响。
+fn start_bridge_server(app: tauri::AppHandle) {
+    std::thread::spawn(move || {
+        let server = match tiny_http::Server::http(BRIDGE_ADDR) {
+            Ok(s) => s,
+            Err(e) => {
+                log::warn!("桥接服务启动失败(端口可能被占用),已跳过: {}", e);
+                return;
+            }
+        };
+        log::info!("桥接服务监听 http://{}", BRIDGE_ADDR);
+
+        let root = match app.path().home_dir() {
+            Ok(h) => h.join("job-copilot"),
+            Err(_) => return,
+        };
+
+        let cors = |mut resp: tiny_http::Response<std::io::Cursor<Vec<u8>>>| {
+            for (k, v) in [
+                ("Access-Control-Allow-Origin", "*"),
+                ("Access-Control-Allow-Headers", "content-type, x-copilot-token"),
+                ("Access-Control-Allow-Methods", "POST, OPTIONS"),
+            ] {
+                if let Ok(h) = tiny_http::Header::from_bytes(k.as_bytes(), v.as_bytes()) {
+                    resp.add_header(h);
+                }
+            }
+            resp
+        };
+        let json_resp = |code: u16, body: &str| {
+            let mut r = tiny_http::Response::from_string(body).with_status_code(code);
+            r.add_header(
+                tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..])
+                    .unwrap(),
+            );
+            r
+        };
+
+        for mut request in server.incoming_requests() {
+            if request.method() == &tiny_http::Method::Options {
+                let _ = request
+                    .respond(cors(tiny_http::Response::from_string("").with_status_code(204)));
+                continue;
+            }
+            if request.method() != &tiny_http::Method::Post {
+                let _ = request.respond(cors(json_resp(405, "{\"ok\":false,\"error\":\"method\"}")));
+                continue;
+            }
+            let token_ok = request
+                .headers()
+                .iter()
+                .any(|h| h.field.equiv("X-Copilot-Token") && h.value.as_str() == BRIDGE_TOKEN);
+            if !token_ok {
+                let _ = request.respond(cors(json_resp(401, "{\"ok\":false,\"error\":\"token\"}")));
+                continue;
+            }
+            let mut body = String::new();
+            if request.as_reader().read_to_string(&mut body).is_err() {
+                let _ = request.respond(cors(json_resp(400, "{\"ok\":false,\"error\":\"body\"}")));
+                continue;
+            }
+            let parsed: serde_json::Value = match serde_json::from_str(&body) {
+                Ok(v) => v,
+                Err(_) => {
+                    let _ = request.respond(cors(json_resp(400, "{\"ok\":false,\"error\":\"json\"}")));
+                    continue;
+                }
+            };
+            let jobs = parsed
+                .get("jobs")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default();
+            let mut written = 0;
+            for job in &jobs {
+                match write_inbox_job(&root, job) {
+                    Ok(_) => written += 1,
+                    Err(e) => log::warn!("写入推送岗位失败: {}", e),
+                }
+            }
+            let _ = app.emit("jobs-received", written);
+            let _ = request.respond(cors(json_resp(
+                200,
+                &format!("{{\"ok\":true,\"written\":{}}}", written),
+            )));
+        }
+    });
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_http::init())
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -449,6 +668,8 @@ pub fn run() {
                         .build(),
                 )?;
             }
+            // 启动与 BOSS 扩展的入站桥(独立线程,失败不阻塞)
+            start_bridge_server(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -459,6 +680,7 @@ pub fn run() {
             fs_list,
             fs_read,
             fs_write,
+            data_root,
             feishu_sync,
             feishu_oauth
         ])

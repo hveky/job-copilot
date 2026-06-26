@@ -79,14 +79,6 @@ export function SettingsModal(props: {
           </div>
         </div>
 
-        <label className="field">我的简历(全文 / 要点,用于针对性优化与话术)</label>
-        <textarea
-          rows={6}
-          value={s.resume}
-          placeholder="粘贴简历正文或核心要点……"
-          onChange={(e) => set("resume", e.target.value)}
-        />
-
         <label className="field">投递安全(防风控)</label>
         <div className="row" style={{ gap: 12 }}>
           <div style={{ flex: 1 }}>
@@ -173,6 +165,22 @@ export function SettingsModal(props: {
               value={s.feishuTableId}
               onChange={(e) => set("feishuTableId", e.target.value)}
             />
+          </div>
+        </div>
+
+        <label className="field">BOSS 扩展对接(入站推送)</label>
+        <p className="hint" style={{ marginTop: 0 }}>
+          桌面端在本机 <code>http://127.0.0.1:14530/jobs</code> 接收 BOSS 扩展推送的岗位。
+          在扩展里把令牌填成下面这串(默认即可),收藏后一键推送，岗位会出现在「📥 候选岗位」里。
+        </p>
+        <div className="row" style={{ gap: 12 }}>
+          <div style={{ flex: 1 }}>
+            <span className="hint">接收端口</span>
+            <input value="14530" readOnly />
+          </div>
+          <div style={{ flex: 2 }}>
+            <span className="hint">对接令牌(X-Copilot-Token · 与扩展默认一致)</span>
+            <input value={s.bridgeToken} readOnly />
           </div>
         </div>
 

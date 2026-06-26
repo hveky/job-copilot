@@ -3,6 +3,36 @@
 // 上线 Tauri 后,这一层整体下沉到 Rust 核心(key 不进渲染层、无 CORS)。
 
 import type { ChatRequest, GatewayConfig, ProviderConfig } from "./types";
+import { isDesktop } from "../lib/tauri";
+
+/**
+ * 选择 fetch 实现:
+ * - 桌面(Tauri)→ tauri-plugin-http 的 fetch,经 Rust 发出,不受 CORS 限制,
+ *   且返回带 body 流的 Response,SSE 流式解析可原样工作。
+ * - Web 预览(vite dev)→ 全局 fetch,走 vite 代理绕过 CORS。
+ */
+async function pickFetch(): Promise<typeof fetch> {
+  if (isDesktop()) {
+    const { fetch: tauriFetch } = await import("@tauri-apps/plugin-http");
+    return tauriFetch as unknown as typeof fetch;
+  }
+  return window.fetch.bind(window);
+}
+
+/**
+ * 解析请求 URL:
+ * - 桌面下直接用绝对 URL(DeepSeek/Anthropic 真实端点)。
+ * - Web 预览下把绝对 DeepSeek/Anthropic URL 改写回 vite 代理前缀(/api/ds、/api/anthropic)。
+ */
+function resolveUrl(baseUrl: string, path: string): string {
+  let base = baseUrl;
+  if (!isDesktop()) {
+    base = base
+      .replace(/^https?:\/\/api\.deepseek\.com/, "/api/ds")
+      .replace(/^https?:\/\/api\.anthropic\.com/, "/api/anthropic");
+  }
+  return `${base}${path}`;
+}
 
 function authHeaders(p: ProviderConfig): Record<string, string> {
   const h: Record<string, string> = {
@@ -47,7 +77,8 @@ export async function chat(
     messages: req.messages.map((m) => ({ role: m.role, content: m.content })),
   };
 
-  const resp = await fetch(`${provider.baseUrl}/v1/messages`, {
+  const doFetch = await pickFetch();
+  const resp = await doFetch(resolveUrl(provider.baseUrl, "/v1/messages"), {
     method: "POST",
     headers: authHeaders(provider),
     body: JSON.stringify(body),
@@ -83,7 +114,8 @@ export async function chatToolsRaw(
 ): Promise<any> {
   const provider = cfg[tier];
   if (!provider.apiKey) throw new GatewayError("未配置 API Key。");
-  const resp = await fetch(`${provider.baseUrl}/v1/messages`, {
+  const doFetch = await pickFetch();
+  const resp = await doFetch(resolveUrl(provider.baseUrl, "/v1/messages"), {
     method: "POST",
     headers: authHeaders(provider),
     body: JSON.stringify({

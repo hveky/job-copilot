@@ -2,7 +2,16 @@ import { useRef, useState } from "react";
 import { chat, GatewayError } from "../gateway/client";
 import type { GatewayConfig, Tier } from "../gateway/types";
 import { contentPackSystem, contentPackUser } from "../prompts/templates";
-import { MarkdownView } from "./MarkdownView";
+import { fsWrite } from "../lib/tauri";
+
+/** 生成的内容包文件名:preps/<岗位|JD>-<时间戳>.md(去掉路径非法字符)。 */
+function packPath(job: string): string {
+  const safe = (job || "JD").replace(/[\\/:*?"<>|]/g, "").slice(0, 40) || "JD";
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
+  return `preps/${safe}-${stamp}.md`;
+}
 
 export function ContentPanel(props: {
   gateway: GatewayConfig;
@@ -12,12 +21,13 @@ export function ContentPanel(props: {
   onJdChange: (jd: string) => void;
   resume: string;
   instruction: string;
+  root: string;
+  onGenerated: (path: string) => void;
 }) {
-  const [content, setContent] = useState("");
   const [busy, setBusy] = useState(false);
   const [reasoning, setReasoning] = useState(false);
-  const [editing, setEditing] = useState(false);
   const [err, setErr] = useState("");
+  const [savedPath, setSavedPath] = useState("");
   const [tier, setTier] = useState<Tier>("deep");
   const abortRef = useRef<AbortController | null>(null);
 
@@ -26,15 +36,19 @@ export function ContentPanel(props: {
       setErr("请先粘贴岗位 JD。");
       return;
     }
+    if (!props.root) {
+      setErr("数据目录尚未就绪(桌面版才能生成到文件)。");
+      return;
+    }
     setErr("");
-    setContent("");
+    setSavedPath("");
     setReasoning(false);
-    setEditing(false);
     setBusy(true);
     const ac = new AbortController();
     abortRef.current = ac;
+    let content = "";
     try {
-      await chat(props.gateway, {
+      content = await chat(props.gateway, {
         tier,
         system: contentPackSystem(props.instruction),
         messages: [
@@ -51,11 +65,16 @@ export function ContentPanel(props: {
         maxTokens: 8000,
         signal: ac.signal,
         onThinking: () => setReasoning(true),
-        onDelta: (t) => {
-          setReasoning(false);
-          setContent((c) => c + t);
-        },
+        onDelta: () => setReasoning(false),
       });
+      if (content.trim()) {
+        const path = packPath(props.job);
+        await fsWrite(props.root, path, content);
+        setSavedPath(path);
+        props.onGenerated(path);
+      } else {
+        setErr("生成结果为空,请重试或换个档位。");
+      }
     } catch (e) {
       if ((e as Error).name === "AbortError") {
         /* 用户取消 */
@@ -72,92 +91,63 @@ export function ContentPanel(props: {
     abortRef.current?.abort();
   }
 
-  function copy() {
-    navigator.clipboard.writeText(content);
-  }
-
-  function download() {
-    const blob = new Blob([content], { type: "text/markdown" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `内容包-${props.job || "JD"}.md`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
   return (
-    <div>
-      <div className="card">
-        <h3>② 粘贴岗位 JD</h3>
-        <textarea
-          rows={7}
-          value={props.jd}
-          placeholder="把 BOSS / 招聘网站上的岗位 JD 整段粘进来……（桌面版将支持自动抓取）"
-          onChange={(e) => props.onJdChange(e.target.value)}
-        />
-        <div className="row" style={{ marginTop: 10 }}>
-          <button
-            className="primary"
-            disabled={busy}
-            onClick={generate}
-            title="生成应试内容包"
-          >
-            {busy ? "生成中…" : "③ 一键生成内容包"}
+    <div className="card">
+      <h3>② 粘贴岗位 JD</h3>
+      <textarea
+        rows={7}
+        value={props.jd}
+        placeholder="把 BOSS / 招聘网站上的岗位 JD 整段粘进来……（桌面版将支持自动抓取）"
+        onChange={(e) => props.onJdChange(e.target.value)}
+      />
+      <div className="row" style={{ marginTop: 10 }}>
+        <button
+          className="primary"
+          disabled={busy}
+          onClick={generate}
+          title="生成应试内容包并写入 preps 文件夹"
+        >
+          {busy ? "生成中…" : "③ 一键生成内容包"}
+        </button>
+        {busy && (
+          <button className="ghost small" onClick={stop}>
+            停止
           </button>
-          {busy && (
-            <button className="ghost small" onClick={stop}>
-              停止
-            </button>
-          )}
-          <span className="spacer" style={{ flex: 1 }} />
-          <span className="hint">档位</span>
-          <select
-            value={tier}
-            style={{ width: 180 }}
-            onChange={(e) => setTier(e.target.value as Tier)}
-          >
-            <option value="light">轻(DeepSeek Flash · 快省)</option>
-            <option value="deep">深度(DeepSeek Pro · 推荐)</option>
-          </select>
-        </div>
-        {err && <div className="err">{err}</div>}
-      </div>
-
-      <div className="card">
-        <div className="row" style={{ justifyContent: "space-between" }}>
-          <h3 style={{ margin: 0 }}>内容包</h3>
-          {content && (
-            <div className="row">
-              <button
-                className="small ghost"
-                onClick={() => setEditing((v) => !v)}
-              >
-                {editing ? "预览" : "编辑"}
-              </button>
-              <button className="small ghost" onClick={copy}>
-                复制
-              </button>
-              <button className="small ghost" onClick={download}>
-                导出 .md
-              </button>
-            </div>
-          )}
-        </div>
-        {busy && !content && (
-          <div className="hint" style={{ marginTop: 10 }}>
-            {reasoning ? "🧠 模型推理中…(深度档会先思考再下笔)" : "连接中…"}
-          </div>
         )}
-        <div style={{ marginTop: 10 }}>
-          <MarkdownView
-            value={content}
-            editing={editing}
-            onChange={setContent}
-            placeholder="生成的【JD拆解 / 知识包 / 实操 / 面试准备 / 反问 / 简历针对性优化】会出现在这里,可预览可编辑可导出。"
-          />
-        </div>
+        <span className="spacer" style={{ flex: 1 }} />
+        <span className="hint">档位</span>
+        <select
+          value={tier}
+          style={{ width: 180 }}
+          onChange={(e) => setTier(e.target.value as Tier)}
+        >
+          <option value="light">轻(DeepSeek Flash · 快省)</option>
+          <option value="deep">深度(DeepSeek Pro · 推荐)</option>
+        </select>
       </div>
+      {busy && (
+        <div className="hint" style={{ marginTop: 10 }}>
+          {reasoning
+            ? "🧠 模型推理中…(深度档会先思考再下笔)"
+            : "生成中,完成后会写入 preps 文件夹并自动打开…"}
+        </div>
+      )}
+      {savedPath && (
+        <div className="hint" style={{ marginTop: 10 }}>
+          ✅ 已生成 →{" "}
+          <a
+            href="#"
+            onClick={(e) => {
+              e.preventDefault();
+              props.onGenerated(savedPath);
+            }}
+          >
+            {savedPath}
+          </a>
+          (在右侧「文件」面板查看 / 编辑)
+        </div>
+      )}
+      {err && <div className="err">{err}</div>}
     </div>
   );
 }

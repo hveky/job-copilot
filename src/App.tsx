@@ -4,7 +4,9 @@ import { ContentPanel } from "./components/ContentPanel";
 import { Copilot } from "./components/Copilot";
 import { FilesPanel } from "./components/FilesPanel";
 import { InstructionPanel } from "./components/InstructionPanel";
+import { JobInbox } from "./components/JobInbox";
 import { JobPicker } from "./components/JobPicker";
+import { ResumeOnboard } from "./components/ResumeOnboard";
 import { SettingsModal } from "./components/Settings";
 import {
   loadSettings,
@@ -13,6 +15,13 @@ import {
   type Settings,
 } from "./state/settings";
 import { BUILTIN_FEISHU } from "./config/feishu";
+import {
+  dataRoot,
+  fsWrite,
+  isDesktop,
+  listenJobsReceived,
+  readResume,
+} from "./lib/tauri";
 
 type SbTab = "copilot" | "instruction" | "files";
 
@@ -24,6 +33,57 @@ export function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sbWidth, setSbWidth] = useState(settings.sidebarWidth);
   const widthRef = useRef(settings.sidebarWidth);
+
+  // 文件优先:固定数据根目录 + 简历从 resumes/ 读取
+  const [root, setRoot] = useState("");
+  const [resumeText, setResumeText] = useState("");
+  const [needResume, setNeedResume] = useState(false);
+  const [fileToOpen, setFileToOpen] = useState("");
+  // BOSS 扩展推送岗位时自增,触发收件箱刷新
+  const [inboxKey, setInboxKey] = useState(0);
+
+  async function refreshResume(r: string) {
+    if (!r) return;
+    try {
+      const { text, count } = await readResume(r);
+      setResumeText(text);
+      if (count === 0) setNeedResume(true);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // 启动:取固定根目录(桌面),建好的四个文件夹由 Rust 保证存在,然后载入简历
+  useEffect(() => {
+    if (!isDesktop()) return;
+    (async () => {
+      try {
+        const r = await dataRoot();
+        setRoot(r);
+        await refreshResume(r);
+      } catch {
+        /* ignore */
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 订阅 BOSS 扩展的入站推送:收到就让收件箱刷新
+  useEffect(() => {
+    let un: (() => void) | undefined;
+    listenJobsReceived(() => setInboxKey((k) => k + 1)).then((fn) => {
+      un = fn;
+    });
+    return () => un?.();
+  }, []);
+
+  async function onSubmitResume(text: string) {
+    await fsWrite(root, "resumes/resume.md", text);
+    setNeedResume(false);
+    await refreshResume(root);
+    setSbTab("files");
+    setFileToOpen("resumes/resume.md");
+  }
 
   function startDrag(e: React.MouseEvent) {
     e.preventDefault();
@@ -64,6 +124,13 @@ export function App() {
     setSettings(s);
     saveSettings(s);
     setShowSettings(false);
+  }
+
+  // 内容包生成完毕 → 跳到「文件」面板并打开该文件
+  function onGenerated(path: string) {
+    setSidebarOpen(true);
+    setSbTab("files");
+    setFileToOpen(path);
   }
 
   return (
@@ -109,19 +176,23 @@ export function App() {
         <main className="main">
           <JobPicker
             gateway={gateway}
-            resume={settings.resume}
+            resume={resumeText}
             targetJobs={settings.targetJobs}
             activeJob={settings.activeJob}
+            jobHistory={settings.jobHistory}
+            cities={settings.cities}
             city={settings.city}
             onJobsChange={(targetJobs) => patch({ targetJobs })}
             onActiveChange={(activeJob) => patch({ activeJob })}
+            onHistoryChange={(jobHistory) => patch({ jobHistory })}
+            onCitiesChange={(cities) => patch({ cities })}
             onCityChange={(city) => patch({ city })}
           />
           <BossPanel
             gateway={gateway}
             job={settings.activeJob}
             city={settings.city}
-            resume={settings.resume}
+            resume={resumeText}
             instruction={settings.instruction}
             dailyCap={settings.dailyCap}
             delayMin={settings.delayMin}
@@ -133,14 +204,22 @@ export function App() {
             feishuTableId={settings.feishuTableId}
             onPickJd={setJd}
           />
+          <JobInbox
+            root={root}
+            refreshKey={inboxKey}
+            onUseJd={setJd}
+            onUseJob={(t) => patch({ activeJob: t })}
+          />
           <ContentPanel
             gateway={gateway}
             job={settings.activeJob}
             city={settings.city}
             jd={jd}
             onJdChange={setJd}
-            resume={settings.resume}
+            resume={resumeText}
             instruction={settings.instruction}
+            root={root}
+            onGenerated={onGenerated}
           />
         </main>
 
@@ -175,7 +254,7 @@ export function App() {
                 gateway={gateway}
                 job={settings.activeJob}
                 jd={jd}
-                resume={settings.resume}
+                resume={resumeText}
                 instruction={settings.instruction}
               />
             )}
@@ -188,14 +267,23 @@ export function App() {
             {sbTab === "files" && (
               <FilesPanel
                 gateway={gateway}
-                workspaceDir={settings.workspaceDir}
+                root={root}
                 instruction={settings.instruction}
-                onSetWorkspace={(workspaceDir) => patch({ workspaceDir })}
+                fileToOpen={fileToOpen}
+                onFileOpened={() => setFileToOpen("")}
+                onFilesChanged={() => refreshResume(root)}
               />
             )}
           </aside>
         )}
       </div>
+
+      {needResume && root && (
+        <ResumeOnboard
+          onSubmit={onSubmitResume}
+          onSkip={() => setNeedResume(false)}
+        />
+      )}
 
       {showSettings && (
         <SettingsModal

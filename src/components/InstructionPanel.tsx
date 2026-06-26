@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { DEFAULT_INSTRUCTION } from "../state/settings";
 import { MarkdownView } from "./MarkdownView";
 
 // 主控指令编辑器(CLAUDE.md 式):一段常驻文本,注入每次 AI 调用。支持预览/编辑。
@@ -46,9 +45,6 @@ export function InstructionPanel(props: {
       <div className="row">
         <button className="primary" disabled={!dirty} onClick={save}>
           {saved ? "已保存 ✓" : dirty ? "保存" : "已保存 ✓"}
-        </button>
-        <button className="ghost small" onClick={() => setDraft(DEFAULT_INSTRUCTION)}>
-          恢复默认
         </button>
         {dirty && <span className="hint">有未保存改动</span>}
       </div>

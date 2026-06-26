@@ -12,6 +12,15 @@
     "core:window:allow-set-focus",
     "core:window:allow-close",
     "core:webview:allow-webview-close",
-    "dialog:allow-open"
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "dialog:allow-open",
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "https://api.deepseek.com/*" },
+        { "url": "https://api.anthropic.com/*" }
+      ]
+    }
   ]
 }

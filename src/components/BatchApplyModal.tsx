@@ -56,6 +56,7 @@ export function BatchApplyModal(props: {
   });
   const [genning, setGenning] = useState(false);
   const [running, setRunning] = useState(false);
+  const [minimized, setMinimized] = useState(false);
   const [note, setNote] = useState("");
   const [countdown, setCountdown] = useState(0);
   const stopRef = useRef(false);
@@ -67,6 +68,14 @@ export function BatchApplyModal(props: {
     (r) => r.include && r.status === "pending",
   ).length;
   const sentCount = rows.filter((r) => r.status === "sent").length;
+  // 投递进度:分母=用户勾选的条数,分子=已到终态(成功/失败/跳过)的勾选条
+  const target = rows.filter((r) => r.include).length;
+  const done = rows.filter(
+    (r) =>
+      r.include &&
+      (r.status === "sent" || r.status === "failed" || r.status === "skipped"),
+  ).length;
+  const pct = target > 0 ? Math.round((done / target) * 100) : 0;
 
   async function genAll() {
     setGenning(true);
@@ -142,6 +151,7 @@ export function BatchApplyModal(props: {
             title: r.job.title,
             company: r.job.company,
             city: props.city,
+            salary: r.job.salary,
             track: props.jobLabel,
             href: r.job.href,
             greeting: r.greeting.trim(),
@@ -173,6 +183,38 @@ export function BatchApplyModal(props: {
     setCountdown(0);
   }
 
+  // 最小化:收成右下角悬浮进度条。组件不卸载 → run() 循环与所有 state 继续。
+  if (minimized) {
+    return (
+      <div className="batch-mini">
+        <div className="row" style={{ gap: 8 }}>
+          <strong style={{ flex: 1, fontSize: 13 }}>
+            批量投递 · {props.jobLabel}
+          </strong>
+          <button className="small ghost" onClick={() => setMinimized(false)}>
+            恢复
+          </button>
+        </div>
+        <div className="progress" style={{ marginTop: 8 }}>
+          <i style={{ width: `${pct}%` }} />
+        </div>
+        <div className="hint" style={{ marginTop: 6 }}>
+          投递进度 {done}/{target} · 已成功 {sentCount}
+          {countdown > 0 ? ` · 下一条 ${countdown}s` : running ? " · 进行中…" : ""}
+        </div>
+        {running && (
+          <div className="row" style={{ marginTop: 6 }}>
+            <span style={{ flex: 1 }} />
+            <button className="ghost small" onClick={() => (stopRef.current = true)}>
+              停止
+            </button>
+          </div>
+        )}
+        {note && <div className="err" style={{ marginTop: 6 }}>{note}</div>}
+      </div>
+    );
+  }
+
   return (
     <div className="modal-mask" onClick={running ? undefined : props.onClose}>
       <div
@@ -180,12 +222,25 @@ export function BatchApplyModal(props: {
         style={{ width: 720 }}
         onClick={(e) => e.stopPropagation()}
       >
-        <h2>批量投递审核</h2>
+        <div className="row">
+          <h2 style={{ flex: 1 }}>批量投递审核</h2>
+          <button className="small ghost" onClick={() => setMinimized(true)}>
+            — 最小化
+          </button>
+        </div>
         <p className="hint" style={{ marginTop: 4 }}>
           岗位「{props.jobLabel}」· 共 {rows.length} 条 · 待投 {includedPending} ·
           已投 {sentCount} · 今日已投 {getDaily()}/{props.dailyCap} ·
           间隔 {props.delayMin}-{props.delayMax}s 随机
         </p>
+        <div className="row" style={{ gap: 8, marginTop: 6 }}>
+          <div className="progress" style={{ flex: 1 }}>
+            <i style={{ width: `${pct}%` }} />
+          </div>
+          <span className="hint" style={{ whiteSpace: "nowrap" }}>
+            投递进度 {done}/{target}
+          </span>
+        </div>
 
         <div className="batch-list">
           {rows.map((r, i) => (

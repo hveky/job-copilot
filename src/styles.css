@@ -482,6 +482,35 @@ label.field {
   color: var(--muted);
 }
 
+/* ---------- 进度条 ---------- */
+.progress {
+  height: 8px;
+  border-radius: 6px;
+  background: var(--border);
+  overflow: hidden;
+}
+.progress > i {
+  display: block;
+  height: 100%;
+  border-radius: 6px;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+
+/* 批量投递最小化后的右下角悬浮进度条 */
+.batch-mini {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  width: 290px;
+  z-index: 9999;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22);
+  padding: 12px 14px;
+}
+
 /* ---------- 批量投递审核表 ---------- */
 .batch-list {
   max-height: 46vh;

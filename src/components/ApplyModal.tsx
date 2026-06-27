@@ -86,6 +86,7 @@ export function ApplyModal(props: {
         title: props.bossJob.title,
         company: props.bossJob.company,
         city: props.city,
+        salary: props.bossJob.salary,
         track: props.jobLabel,
         href: props.bossJob.href,
         greeting: greeting.trim(),

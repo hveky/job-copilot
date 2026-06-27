@@ -46,6 +46,7 @@ export interface ApplyRecord {
   title: string;
   company: string;
   city: string;
+  salary: string;
   track: string;
   href: string;
   greeting: string;

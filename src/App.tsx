@@ -184,16 +184,19 @@ export function App() {
             jobHistory={settings.jobHistory}
             cities={settings.cities}
             city={settings.city}
+            salary={settings.salary}
             onJobsChange={(targetJobs) => patch({ targetJobs })}
             onActiveChange={(activeJob) => patch({ activeJob })}
             onHistoryChange={(jobHistory) => patch({ jobHistory })}
             onCitiesChange={(cities) => patch({ cities })}
             onCityChange={(city) => patch({ city })}
+            onSalaryChange={(salary) => patch({ salary })}
           />
           <BossPanel
             gateway={gateway}
             job={settings.activeJob}
             city={settings.city}
+            salary={settings.salary}
             resume={resumeText}
             instruction={settings.instruction}
             dailyCap={settings.dailyCap}

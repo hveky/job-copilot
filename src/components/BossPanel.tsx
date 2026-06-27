@@ -10,6 +10,7 @@ import {
   type BossReplies,
 } from "../lib/tauri";
 import { cityCode } from "../data/cities";
+import { salaryMatches } from "../data/salaries";
 import { ApplyModal } from "./ApplyModal";
 import { BatchApplyModal } from "./BatchApplyModal";
 import {
@@ -28,6 +29,7 @@ export function BossPanel(props: {
   gateway: GatewayConfig;
   job: string;
   city: string;
+  salary: string;
   resume: string;
   instruction: string;
   dailyCap: number;
@@ -123,9 +125,16 @@ export function BossPanel(props: {
     setSearching(true);
     setJobs([]);
     try {
-      const list = await bossSearch(props.job, cityCode(props.city));
+      const raw = await bossSearch(props.job, cityCode(props.city));
+      const list = raw.filter((j) => salaryMatches(j.salary, props.salary));
       setJobs(list);
-      if (!list.length) setErr("没抓到岗位卡片(确认 BOSS 窗口已登录且停在搜索页)。");
+      if (!raw.length) {
+        setErr("没抓到岗位卡片(确认 BOSS 窗口已登录且停在搜索页)。");
+      } else if (!list.length) {
+        setErr(`抓到 ${raw.length} 条,但都不在「${props.salary}」区间。换个薪资档位或选「不限」。`);
+      } else if (list.length < raw.length) {
+        setErr(`已按薪资「${props.salary}」过滤:${raw.length} → ${list.length} 条。`);
+      }
     } catch (e) {
       setErr(String(e));
     } finally {
@@ -236,7 +245,7 @@ export function BossPanel(props: {
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div className="job-row-title">{j.title || "(无标题)"}</div>
                 <div className="hint" style={{ marginTop: 2 }}>
-                  {[j.company, j.tags].filter(Boolean).join(" · ")}
+                  {[j.company, j.salary, j.tags].filter(Boolean).join(" · ")}
                 </div>
               </div>
               <button

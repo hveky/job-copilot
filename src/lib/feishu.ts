@@ -10,9 +10,6 @@ function trackOption(t: string): string | null {
   return null;
 }
 
-// 城市 select 现有选项;不在其中则不填(避免飞书报未知选项)。
-const CITY_OPTIONS = ["广州", "深圳", "南京", "苏州"];
-
 export function buildFeishuRecords(recs: ApplyRecord[]): unknown[] {
   return recs.map((r) => {
     const fields: Record<string, unknown> = {
@@ -26,7 +23,10 @@ export function buildFeishuRecords(recs: ApplyRecord[]): unknown[] {
       HR回复: "未回",
       岗位链接: { link: r.href, text: r.href },
     };
-    if (CITY_OPTIONS.includes(r.city)) fields["城市"] = r.city;
+    if (r.salary) fields["薪资"] = r.salary;
+    if (r.track) fields["方向"] = r.track;
+    // 城市为飞书单选;写未知选项会自动新增(不报错),故直接写原值。
+    if (r.city) fields["城市"] = r.city;
     const tk = trackOption(r.track);
     if (tk) fields["赛道"] = tk;
     return { fields };

@@ -120,10 +120,10 @@ export function FilesPanel(props: {
   );
   const resolveRef = useRef<((ok: boolean) => void) | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // 快捷录入预设:点一下预填提示词并聚焦,用户补上自己的原始信息再发送
-  const PRESETS: { label: string; seed: string }[] = [
+  // 快捷录入模式:选中后不进输入框,发送时把对应 prompt 并入用户文本一起发给 agent
+  type Preset = { label: string; seed: string };
+  const PRESETS: Preset[] = [
     {
       label: "📝 整理我的信息→简历",
       seed: "我下面贴一些我的个人信息和经历,请先读取 resumes/resume.md(如已存在),把这些整理合并进去(成果量化、用 STAR、不要编造,也不要丢掉原有内容),写回 resumes/resume.md:\n\n",
@@ -137,16 +137,7 @@ export function FilesPanel(props: {
       seed: "请把我下面的求职疑问追加记录到 talk/questions.md(带上日期,保留已有条目):\n\n",
     },
   ];
-  function seedInput(seed: string) {
-    setInput(seed);
-    setTimeout(() => {
-      const el = inputRef.current;
-      if (el) {
-        el.focus();
-        el.selectionStart = el.selectionEnd = el.value.length;
-      }
-    }, 0);
-  }
+  const [mode, setMode] = useState<Preset | null>(null);
 
   // 上下分区高度(可拖拽)
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -248,11 +239,14 @@ export function FilesPanel(props: {
   async function runAgent() {
     const text = input.trim();
     if (!text || running) return;
+    // 若激活了快捷模式,把模式 prompt 前置并入,但输入框/日志只显示用户文本
+    const finalText = mode ? `${mode.seed}${text}` : text;
     setInput("");
+    setMode(null);
     setErr("");
     setLog((l) => [...l, { kind: "user", text }]);
     setRunning(true);
-    const messages: any[] = [{ role: "user", content: text }];
+    const messages: any[] = [{ role: "user", content: finalText }];
     try {
       for (let step = 0; step < 8; step++) {
         const resp = await chatToolsRaw(props.gateway, "deep", {
@@ -456,22 +450,33 @@ export function FilesPanel(props: {
             {PRESETS.map((p) => (
               <button
                 key={p.label}
-                className="small ghost"
+                className={"small" + (mode?.label === p.label ? " primary" : " ghost")}
                 disabled={running}
-                title="预填提示词,补上你的信息后发送"
-                onClick={() => seedInput(p.seed)}
+                title="选中后只需输入你的信息,发送时自动并入对应整理指令"
+                onClick={() => setMode((m) => (m?.label === p.label ? null : p))}
               >
                 {p.label}
               </button>
             ))}
           </div>
 
+          {mode && (
+            <div
+              className="hint"
+              style={{ padding: "0 2px", display: "flex", gap: 6, alignItems: "center" }}
+            >
+              <span>已附加：{mode.label}（发送时自动并入）</span>
+              <span style={{ cursor: "pointer" }} onClick={() => setMode(null)} title="移除">
+                ×
+              </span>
+            </div>
+          )}
+
           <div className="composer">
             <textarea
-              ref={inputRef}
               rows={2}
               value={input}
-              placeholder="让 AI 改文件,或点上方按钮整理简历/个人信息…(Enter 发送)"
+              placeholder="让 AI 改文件;选上方按钮可附加「整理简历/个人信息」模式…(Enter 发送)"
               disabled={running}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {

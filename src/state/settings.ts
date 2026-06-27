@@ -13,6 +13,7 @@ export interface Settings {
   jobHistory: string[]; // 历史选择过的岗位(最近优先,用于「历史选择」建议)
   cities: string[]; // 已选城市列表(label)
   city: string; // 当前城市(label,cities 之一,下游搜索用),码见 data/cities.ts
+  salary: string; // 薪资档位筛选(label,空=不限),见 data/salaries.ts
   theme: "light" | "dark"; // 界面主题
   dailyCap: number; // 单日投递上限(防风控)
   delayMin: number; // 投递最小间隔(秒)
@@ -50,6 +51,7 @@ export const DEFAULT_SETTINGS: Settings = {
   jobHistory: [],
   cities: ["广州"],
   city: "广州",
+  salary: "",
   theme: "light",
   dailyCap: 30,
   delayMin: 40,
@@ -86,6 +88,7 @@ function migrate(s: Settings): Settings {
   if (!Array.isArray(next.cities) || next.cities.length === 0)
     next.cities = next.city ? [next.city] : [...DEFAULT_SETTINGS.cities];
   if (!Array.isArray(next.jobHistory)) next.jobHistory = [];
+  if (typeof next.salary !== "string") next.salary = "";
   return next;
 }
 

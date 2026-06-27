@@ -12,6 +12,7 @@ const BRIDGE_ADDR: &str = "127.0.0.1:14530";
 const SCRAPE_LIST_JS: &str = r#"(function(){
   var tries=0;
   function pick(el,sels){for(var i=0;i<sels.length;i++){var n=el.querySelector(sels[i]);if(n&&n.innerText)return n.innerText.trim();}return '';}
+  function cleanSalary(s){if(!s)return '';if(!/[0-9]/.test(s))return '';if(!/^[0-9Kk·.\-万元天月年薪面议以上\s]+$/.test(s))return '';return s.trim();}
   function emit(ev,data){try{window.__TAURI__.event.emit(ev,data);}catch(e){}}
   function go(){
     try{
@@ -26,7 +27,7 @@ const SCRAPE_LIST_JS: &str = r#"(function(){
         out.push({
           id:id, href:href,
           title:pick(li,['.job-name','.job-title','[class*="job-name"]']),
-          salary:pick(li,['.job-salary','.salary','[class*="salary"]']),
+          salary:cleanSalary(pick(li,['.job-salary','.salary','[class*="salary"]'])),
           company:pick(li,['.boss-name','.company-name','[class*="company-name"]']),
           tags:pick(li,['.tag-list','.job-card-footer'])
         });
@@ -41,6 +42,7 @@ const SCRAPE_LIST_JS: &str = r#"(function(){
 const SCRAPE_JD_JS: &str = r#"(function(){
   var tries=0;
   function txt(sels){for(var i=0;i<sels.length;i++){var n=document.querySelector(sels[i]);if(n&&n.innerText)return n.innerText.trim();}return '';}
+  function cleanSalary(s){if(!s)return '';if(!/[0-9]/.test(s))return '';if(!/^[0-9Kk·.\-万元天月年薪面议以上\s]+$/.test(s))return '';return s.trim();}
   function emit(ev,data){try{window.__TAURI__.event.emit(ev,data);}catch(e){}}
   function go(){
     try{
@@ -49,7 +51,7 @@ const SCRAPE_JD_JS: &str = r#"(function(){
       if(!jd && tries<25){tries++;return setTimeout(go,400);}
       emit('boss-jd',{
         title:txt(['.job-banner .name h1','.name h1','.job-name','h1']),
-        salary:txt(['.job-banner .salary','.salary','[class*="salary"]']),
+        salary:cleanSalary(txt(['.job-banner .salary','.salary','[class*="salary"]'])),
         company:txt(['.company-info .name','.sider-company .name','[class*="company"] .name']),
         jd:jd
       });

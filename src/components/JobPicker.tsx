@@ -3,6 +3,7 @@ import { chat, GatewayError } from "../gateway/client";
 import type { GatewayConfig } from "../gateway/types";
 import { recommendSystem, recommendUser } from "../prompts/templates";
 import { CITIES } from "../data/cities";
+import { SALARY_BRACKETS } from "../data/salaries";
 
 const HISTORY_MAX = 12;
 
@@ -14,11 +15,13 @@ export function JobPicker(props: {
   jobHistory: string[];
   cities: string[];
   city: string;
+  salary: string;
   onJobsChange: (jobs: string[]) => void;
   onActiveChange: (job: string) => void;
   onHistoryChange: (history: string[]) => void;
   onCitiesChange: (cities: string[]) => void;
   onCityChange: (city: string) => void;
+  onSalaryChange: (salary: string) => void;
 }) {
   const [custom, setCustom] = useState("");
   const [wish, setWish] = useState("");
@@ -186,6 +189,21 @@ export function JobPicker(props: {
             ))}
           </select>
           <span className="hint">点城市设为当前(用于搜索)</span>
+          <span style={{ flex: 1 }} />
+          <span className="hint">薪资</span>
+          <select
+            style={{ width: 110 }}
+            value={props.salary}
+            onChange={(e) => props.onSalaryChange(e.target.value)}
+            title="按薪资区间过滤搜索结果"
+          >
+            <option value="">不限</option>
+            {SALARY_BRACKETS.map((s) => (
+              <option key={s.label} value={s.label}>
+                {s.label}
+              </option>
+            ))}
+          </select>
         </div>
         <div className="tracks" style={{ marginTop: 6 }}>
           {props.cities.length === 0 && (

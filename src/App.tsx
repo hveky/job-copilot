@@ -90,7 +90,9 @@ export function App() {
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
     const move = (ev: MouseEvent) => {
-      const w = Math.min(760, Math.max(320, window.innerWidth - ev.clientX));
+      // 下限 300;上限取 760 与「窗口宽 - 360(留给主区)」的较小值,窄窗下主区不被挤没
+      const upper = Math.min(760, Math.max(300, window.innerWidth - 360));
+      const w = Math.min(upper, Math.max(300, window.innerWidth - ev.clientX));
       widthRef.current = w;
       setSbWidth(w);
     };
@@ -262,6 +264,8 @@ export function App() {
               <InstructionPanel
                 value={settings.instruction}
                 onChange={(instruction) => patch({ instruction })}
+                gateway={gateway}
+                resume={resumeText}
               />
             )}
             {sbTab === "files" && (

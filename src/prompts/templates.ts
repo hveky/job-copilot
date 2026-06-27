@@ -76,6 +76,27 @@ ${resume}
 针对这份 JD 命中关键词。给 **改前 / 改后 对比 + 理由**,不直接覆盖原稿。`;
 }
 
+/** Instruction「AI 帮写」:把用户一句话诉求展开成一段 CLAUDE.md 式主控指令。 */
+export function instructionHelpSystem(resume?: string): string {
+  const lines = [
+    "你帮用户把零散的求职偏好/诉求,整理成一段可直接用的「主控指令」(相当于 CLAUDE.md),",
+    "这段指令之后会注入到每一次简历优化、内容包生成、HR 回复里,作为贯穿全程的偏好。",
+    "用中文、Markdown 要点(`- ` 列表),覆盖这些维度(用户没提到的合理留空,不要硬编):",
+    "  · 语气与风格(务实/正式/亲和…)",
+    "  · 成果量化与 STAR 包装要求",
+    "  · 目标赛道 / 岗位方向",
+    "  · ⚠️ 绝不能替用户声称的、未确认的技能(让模型不要编造)",
+    "  · 简历改写偏好(如:给改前/改后+理由,不直接覆盖原稿)",
+    "务实、具体、可直接落地,拒绝空话套话。只输出指令正文本身,不要解释、不要前后缀、不要代码块包裹。",
+  ];
+  if (resume?.trim()) {
+    lines.push(
+      `\n用户简历(供你贴合其真实背景,不要照抄进指令):\n${resume.trim().slice(0, 1500)}`,
+    );
+  }
+  return lines.join("\n");
+}
+
 /** 回复助手 lite:帮用户回复 HR。 */
 export function copilotSystem(ctx: {
   job?: string;

@@ -127,7 +127,12 @@ body {
 .main {
   min-width: 0;
   overflow: auto;
-  padding: 22px 24px;
+  padding: 18px 20px;
+}
+@media (max-width: 1024px) {
+  .main {
+    padding: 14px 14px;
+  }
 }
 .divider {
   background: var(--border);
@@ -527,7 +532,7 @@ label.field {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 18px;
-  min-height: 200px;
+  min-height: 120px;
 }
 .content.empty {
   color: var(--muted);
@@ -662,7 +667,7 @@ label.field {
 /* ---------- Markdown 预览 / 编辑 ---------- */
 .md-edit {
   width: 100%;
-  min-height: 340px;
+  min-height: 200px;
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius);

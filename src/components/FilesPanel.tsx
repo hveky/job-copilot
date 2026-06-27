@@ -39,7 +39,12 @@ function agentSystem(instruction: string): string {
   const base = [
     "你是求职文件助手,能列出/读取/修改用户本地求职工作区里的文件(简历、话术、JD 等)。",
     "用户让你改什么,先用 read_file 看清当前内容,再用 write_file 提交修改(会让用户确认后才真正落盘)。",
-    "改简历/话术时:成果量化、用 STAR、不编造未确认技能。改完简要说明改了什么。",
+    "用户可能直接粘贴零散的个人信息、经历、简历片段或求职疑问让你整理归档,落点约定:",
+    "  · 简历正文 → resumes/resume.md(先 read_file 看现有内容再合并,不要覆盖丢失旧信息)",
+    "  · 基本个人信息(姓名/学校/联系方式/求职意向等) → resumes/profile.md",
+    "  · 求职疑问/待办 → talk/questions.md(追加,带日期,不要删旧条目)",
+    "整理简历/经历时:成果尽量量化、用 STAR 包装、绝不编造用户未确认的技能(不确定的标注【待核实】)。",
+    "改完简要说明改了什么。",
   ].join("\n");
   const head = instruction.trim()
     ? `${SYSTEM_DEFAULT_INSTRUCTION}\n\n${instruction.trim()}`
@@ -115,6 +120,33 @@ export function FilesPanel(props: {
   );
   const resolveRef = useRef<((ok: boolean) => void) | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // 快捷录入预设:点一下预填提示词并聚焦,用户补上自己的原始信息再发送
+  const PRESETS: { label: string; seed: string }[] = [
+    {
+      label: "📝 整理我的信息→简历",
+      seed: "我下面贴一些我的个人信息和经历,请先读取 resumes/resume.md(如已存在),把这些整理合并进去(成果量化、用 STAR、不要编造,也不要丢掉原有内容),写回 resumes/resume.md:\n\n",
+    },
+    {
+      label: "🧾 完善个人信息",
+      seed: "请把我下面的基本信息(姓名/学校/专业/联系方式/求职意向等)整理写入 resumes/profile.md(已有则合并更新):\n\n",
+    },
+    {
+      label: "❓ 记录我的疑问",
+      seed: "请把我下面的求职疑问追加记录到 talk/questions.md(带上日期,保留已有条目):\n\n",
+    },
+  ];
+  function seedInput(seed: string) {
+    setInput(seed);
+    setTimeout(() => {
+      const el = inputRef.current;
+      if (el) {
+        el.focus();
+        el.selectionStart = el.selectionEnd = el.value.length;
+      }
+    }, 0);
+  }
 
   // 上下分区高度(可拖拽)
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -420,11 +452,26 @@ export function FilesPanel(props: {
             </div>
           )}
 
+          <div className="row" style={{ gap: 6, flexWrap: "wrap", padding: "0 2px" }}>
+            {PRESETS.map((p) => (
+              <button
+                key={p.label}
+                className="small ghost"
+                disabled={running}
+                title="预填提示词,补上你的信息后发送"
+                onClick={() => seedInput(p.seed)}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+
           <div className="composer">
             <textarea
+              ref={inputRef}
               rows={2}
               value={input}
-              placeholder="让 AI 改文件…(Enter 发送)"
+              placeholder="让 AI 改文件,或点上方按钮整理简历/个人信息…(Enter 发送)"
               disabled={running}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {

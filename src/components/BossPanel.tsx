@@ -40,6 +40,7 @@ export function BossPanel(props: {
   feishuUserToken: string;
   feishuBaseToken: string;
   feishuTableId: string;
+  root: string;
   onPickJd: (jd: string) => void;
 }) {
   const [err, setErr] = useState("");
@@ -276,6 +277,7 @@ export function BossPanel(props: {
           bossJob={applyJob}
           resume={props.resume}
           instruction={props.instruction}
+          root={props.root}
           onClose={() => setApplyJob(null)}
           onApplied={handleApplied}
         />

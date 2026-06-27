@@ -9,30 +9,60 @@ const BRIDGE_TOKEN: &str = "job-copilot-local";
 const BRIDGE_ADDR: &str = "127.0.0.1:14530";
 
 // 抓取列表:在 BOSS 搜索页注入,等卡片+__TAURI__ 就绪后用 IPC 事件回传。
+// 优先走 BOSS 官方搜索接口(salaryDesc 是明文,绕开列表卡片的字体加密薪资);
+// 接口失败/空再退回 DOM 抓取(此时薪资经 cleanSalary 兜底,乱码则留空)。
 const SCRAPE_LIST_JS: &str = r#"(function(){
   var tries=0;
   function pick(el,sels){for(var i=0;i<sels.length;i++){var n=el.querySelector(sels[i]);if(n&&n.innerText)return n.innerText.trim();}return '';}
   function cleanSalary(s){if(!s)return '';if(!/[0-9]/.test(s))return '';if(!/^[0-9Kk·.\-万元天月年薪面议以上\s]+$/.test(s))return '';return s.trim();}
   function emit(ev,data){try{window.__TAURI__.event.emit(ev,data);}catch(e){}}
+  function domScrape(){
+    var cards=document.querySelectorAll('li.job-card-box, li.job-card-wrapper');
+    var out=[];
+    cards.forEach(function(li){
+      var a=li.querySelector('a.job-card-left, a[ka^="search_list"], a');
+      var href=a?a.href:'';
+      var id='';var m=href.match(/job_detail\/([^.?\/]+)/);if(m)id=m[1];
+      out.push({
+        id:id, href:href,
+        title:pick(li,['.job-name','.job-title','[class*="job-name"]']),
+        salary:cleanSalary(pick(li,['.job-salary','.salary','[class*="salary"]'])),
+        company:pick(li,['.boss-name','.company-name','[class*="company-name"]']),
+        tags:pick(li,['.tag-list','.job-card-footer'])
+      });
+    });
+    return out;
+  }
+  function viaApi(){
+    var qs=new URLSearchParams(location.search);
+    var query=qs.get('query')||'';var city=qs.get('city')||'';
+    var api='/wapi/zpgeek/search/joblist.json?scene=1&query='+encodeURIComponent(query)+'&city='+encodeURIComponent(city)+'&page=1&pageSize=30';
+    return fetch(api,{credentials:'include'}).then(function(r){return r.json();}).then(function(j){
+      var list=(j&&j.zpData&&j.zpData.jobList)||[];
+      return list.map(function(it){
+        return {
+          id: it.encryptJobId||'',
+          href: it.encryptJobId?('https://www.zhipin.com/job_detail/'+it.encryptJobId+'.html'):'',
+          title: it.jobName||'',
+          salary: it.salaryDesc||'',
+          company: it.brandName||'',
+          area: it.areaDistrict||'',
+          tags: [].concat(it.jobLabels||[]).join(' · ')
+        };
+      });
+    });
+  }
+  function fallback(){
+    var cards=document.querySelectorAll('li.job-card-box, li.job-card-wrapper');
+    if(cards.length===0 && tries<25){tries++;return setTimeout(go,400);}
+    emit('boss-result', domScrape());
+  }
   function go(){
     try{
       if(!window.__TAURI__||!window.__TAURI__.event){if(tries<30){tries++;return setTimeout(go,400);}return;}
-      var cards=document.querySelectorAll('li.job-card-box, li.job-card-wrapper');
-      if(cards.length===0 && tries<25){tries++;return setTimeout(go,400);}
-      var out=[];
-      cards.forEach(function(li){
-        var a=li.querySelector('a.job-card-left, a[ka^="search_list"], a');
-        var href=a?a.href:'';
-        var id='';var m=href.match(/job_detail\/([^.?\/]+)/);if(m)id=m[1];
-        out.push({
-          id:id, href:href,
-          title:pick(li,['.job-name','.job-title','[class*="job-name"]']),
-          salary:cleanSalary(pick(li,['.job-salary','.salary','[class*="salary"]'])),
-          company:pick(li,['.boss-name','.company-name','[class*="company-name"]']),
-          tags:pick(li,['.tag-list','.job-card-footer'])
-        });
-      });
-      emit('boss-result', out);
+      viaApi().then(function(out){
+        if(out&&out.length){emit('boss-result',out);}else{fallback();}
+      }).catch(function(){fallback();});
     }catch(e){emit('boss-error','list: '+String(e));}
   }
   go();
@@ -323,6 +353,21 @@ fn fs_write(root: String, path: String, content: String) -> Result<(), String> {
         std::fs::create_dir_all(parent).ok();
     }
     std::fs::write(&p, content).map_err(|e| e.to_string())
+}
+
+/// 二进制写入工作区内某文件(用于存储 PNG 等)。
+#[tauri::command]
+fn fs_write_bytes(root: String, path: String, data: Vec<u8>) -> Result<(), String> {
+    let p = safe_join(&root, &path)?;
+    if let Some(parent) = p.parent() { std::fs::create_dir_all(parent).ok(); }
+    std::fs::write(&p, &data).map_err(|e| e.to_string())
+}
+
+/// 二进制读取工作区内某文件。
+#[tauri::command]
+fn fs_read_bytes(root: String, path: String) -> Result<Vec<u8>, String> {
+    let p = safe_join(&root, &path)?;
+    std::fs::read(&p).map_err(|e| e.to_string())
 }
 
 /// 飞书授权登录(账号):开授权 WebView,拦截重定向拿 code,换 user_access_token。
@@ -682,6 +727,8 @@ pub fn run() {
             fs_list,
             fs_read,
             fs_write,
+            fs_write_bytes,
+            fs_read_bytes,
             data_root,
             feishu_sync,
             feishu_oauth

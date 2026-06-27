@@ -8,6 +8,7 @@ import { JobInbox } from "./components/JobInbox";
 import { JobPicker } from "./components/JobPicker";
 import { ResumeOnboard } from "./components/ResumeOnboard";
 import { SettingsModal } from "./components/Settings";
+import { ResumeBuilderModal } from "./components/ResumeBuilderModal";
 import {
   loadSettings,
   saveSettings,
@@ -28,6 +29,7 @@ type SbTab = "copilot" | "instruction" | "files";
 export function App() {
   const [settings, setSettings] = useState<Settings>(loadSettings);
   const [showSettings, setShowSettings] = useState(false);
+  const [showResume, setShowResume] = useState(false);
   const [jd, setJd] = useState("");
   const [sbTab, setSbTab] = useState<SbTab>("copilot");
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -155,6 +157,9 @@ export function App() {
         >
           {settings.theme === "dark" ? "浅色" : "深色"}
         </button>
+        <button className="small" onClick={() => setShowResume(true)}>
+          简历
+        </button>
         <button className="small" onClick={() => setShowSettings(true)}>
           设置
         </button>
@@ -207,6 +212,7 @@ export function App() {
             feishuUserToken={settings.feishuUserToken}
             feishuBaseToken={settings.feishuBaseToken}
             feishuTableId={settings.feishuTableId}
+            root={root}
             onPickJd={setJd}
           />
           <JobInbox
@@ -289,6 +295,15 @@ export function App() {
         <ResumeOnboard
           onSubmit={onSubmitResume}
           onSkip={() => setNeedResume(false)}
+        />
+      )}
+
+      {showResume && root && (
+        <ResumeBuilderModal
+          gateway={gateway}
+          root={root}
+          resumeText={resumeText}
+          onClose={() => { setShowResume(false); refreshResume(root); }}
         />
       )}
 

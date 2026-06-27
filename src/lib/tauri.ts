@@ -123,6 +123,16 @@ export async function fsWrite(
   await invoke("fs_write", { root, path, content });
 }
 
+export async function fsWriteBytes(root: string, path: string, bytes: number[]): Promise<void> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("fs_write_bytes", { root, path, data: bytes });
+}
+
+export async function fsReadBytes(root: string, path: string): Promise<number[]> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<number[]>("fs_read_bytes", { root, path });
+}
+
 /** 飞书账号授权(OAuth),返回 user_access_token。 */
 export async function feishuOAuth(
   clientId: string,

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { chat, GatewayError } from "../gateway/client";
 import type { GatewayConfig } from "../gateway/types";
 import { greetingSystem, greetingUser } from "../prompts/templates";
-import { bossApply, bossFetchJd, type BossJob } from "../lib/tauri";
+import { bossApply, bossFetchJd, fsReadBytes, type BossJob } from "../lib/tauri";
 import type { ApplyRecord } from "../lib/ledger";
 
 type Phase = "loading" | "review" | "applying" | "done" | "error";
@@ -15,6 +15,7 @@ export function ApplyModal(props: {
   bossJob: BossJob;
   resume: string;
   instruction: string;
+  root: string;
   onClose: () => void;
   onApplied: (rec: ApplyRecord) => void;
 }) {
@@ -22,6 +23,8 @@ export function ApplyModal(props: {
   const [greeting, setGreeting] = useState("");
   const [err, setErr] = useState("");
   const [ok, setOk] = useState(false);
+  const [attachResume, setAttachResume] = useState(false);
+  const [clipNote, setClipNote] = useState("");
   const jdRef = useRef("");
 
   async function genGreeting(jd: string) {
@@ -76,6 +79,7 @@ export function ApplyModal(props: {
       return;
     }
     setErr("");
+    setClipNote("");
     setPhase("applying");
     try {
       const r = await bossApply(props.bossJob.href, greeting.trim());
@@ -93,6 +97,17 @@ export function ApplyModal(props: {
         date: Date.now(),
         synced: false,
       });
+      // Clipboard attach resume image
+      if (attachResume && props.root) {
+        try {
+          const bytes = await fsReadBytes(props.root, "resumes/resume.png");
+          const blob = new Blob([new Uint8Array(bytes)], { type: "image/png" });
+          await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+          setClipNote("简历图已复制，去 BOSS 聊天框 Ctrl+V 发送");
+        } catch {
+          setClipNote("简历图复制失败，可在 resumes/resume.png 手动发送");
+        }
+      }
     } catch (e) {
       setErr(String(e));
       setPhase("error");
@@ -134,6 +149,15 @@ export function ApplyModal(props: {
               确认后:打开该岗位 → 点「立即沟通」(发平台统一招呼语)→ 追发上面这段。
               发送是真实外发动作。
             </p>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8, cursor: "pointer", fontSize: 13 }}>
+              <input
+                type="checkbox"
+                checked={attachResume}
+                onChange={(e) => setAttachResume(e.target.checked)}
+                disabled={phase === "applying"}
+              />
+              打招呼后附简历图（复制到剪贴板，去 BOSS 粘贴）
+            </label>
           </>
         )}
 
@@ -149,6 +173,7 @@ export function ApplyModal(props: {
         )}
 
         {err && <div className="err">{err}</div>}
+        {clipNote && <div className="hint" style={{ marginTop: 6, color: clipNote.includes("失败") ? "var(--warn)" : "var(--ok)" }}>{clipNote}</div>}
 
         <div className="actions">
           {phase === "review" && (

@@ -73,8 +73,15 @@ interface TreeNode {
   children: TreeNode[];
 }
 
+// 始终展示的基础文件夹（即使为空）
+const BASE_DIRS = ["resumes", "preps", "talk"];
+
 function buildTree(paths: string[]): TreeNode {
   const root: TreeNode = { name: "", path: "", isFile: false, children: [] };
+  // 预建基础文件夹，保证空目录也显示
+  for (const dir of BASE_DIRS) {
+    root.children.push({ name: dir, path: dir, isFile: false, children: [] });
+  }
   for (const p of paths) {
     const parts = p.split("/");
     let cur = root;
@@ -180,8 +187,8 @@ export function FilesPanel(props: {
     try {
       const list = await fsList(root);
       setFiles(list);
-      // 默认展开顶层文件夹
-      const top = new Set<string>();
+      // 默认展开基础文件夹 + 任何含文件的顶层文件夹
+      const top = new Set<string>(BASE_DIRS);
       list.forEach((p) => {
         const i = p.indexOf("/");
         if (i > 0) top.add(p.slice(0, i));

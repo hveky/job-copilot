@@ -9,7 +9,7 @@ import { ReplyWorkspace } from "./components/ReplyWorkspace";
 import { FilesPanel } from "./components/FilesPanel";
 import { JobPicker } from "./components/JobPicker";
 import { SettingsModal } from "./components/Settings";
-import { ResumeBuilderModal } from "./components/ResumeBuilderModal";
+import { ResumeViewerModal } from "./components/ResumeViewerModal";
 import { ProfilePage } from "./components/ProfilePage";
 import { ApplyRecordsPage } from "./components/ApplyRecordsPage";
 import { Tabs } from "./ui";
@@ -351,11 +351,8 @@ export function App() {
       />
 
       {showResume && root && (
-        <ResumeBuilderModal
-          gateway={gateway}
+        <ResumeViewerModal
           root={root}
-          resumeText={resumeText}
-          onRawSaved={() => refreshResume(root)}
           onClose={() => {
             setShowResume(false);
             refreshResume(root);

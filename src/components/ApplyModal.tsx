@@ -3,6 +3,7 @@ import { chat, GatewayError } from "../gateway/client";
 import type { GatewayConfig } from "../gateway/types";
 import { greetingSystem, greetingUser } from "../prompts/templates";
 import { bossApply, bossFetchJd, fsReadBytes, type BossJob } from "../lib/tauri";
+import { getDefaultResumePng } from "../state/resumeAssets";
 import { bumpDaily, getDaily, type ApplyRecord } from "../lib/ledger";
 import { canApplyToday, shouldRecordApplyResult } from "../lib/applySafety";
 
@@ -108,13 +109,14 @@ export function ApplyModal(props: {
       }
       // Clipboard attach resume image
       if (shouldRecordApplyResult(r) && attachResume && props.root) {
+        const pngPath = getDefaultResumePng() || "resumes/resume.png";
         try {
-          const bytes = await fsReadBytes(props.root, "resumes/resume.png");
+          const bytes = await fsReadBytes(props.root, pngPath);
           const blob = new Blob([new Uint8Array(bytes)], { type: "image/png" });
           await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
           setClipNote("简历图已复制，去 BOSS 聊天框 Ctrl+V 发送");
         } catch {
-          setClipNote("简历图复制失败，可在 resumes/resume.png 手动发送");
+          setClipNote(`简历图复制失败，可在「简历」里导入，或手动发送 ${pngPath}`);
         }
       }
     } catch (e) {

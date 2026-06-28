@@ -19,7 +19,7 @@ export function ProfilePage(props: {
             <h2 className="m-0 text-[16px] font-bold leading-6 text-text">个人简历</h2>
             <p className="m-0 text-[12px] leading-5 text-text-2">用于岗位评分、内容包和回复助手的个人背景来源。</p>
           </div>
-          <Button variant="secondary" size="sm" onClick={props.onOpenResume}>编辑简历</Button>
+          <Button variant="secondary" size="sm" onClick={props.onOpenResume}>查看简历</Button>
         </header>
         <div className="max-h-[calc(100vh-190px)] overflow-auto p-5">
           {props.resumeText.trim() ? (

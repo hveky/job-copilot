@@ -2,6 +2,8 @@ use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use rusqlite::{params, Connection, OptionalExtension};
+use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Listener, Manager};
 
 /// 与 BOSS 扩展约定的共享令牌文件名(请求头 X-Copilot-Token)。
@@ -275,6 +277,418 @@ async fn boss_replies(app: tauri::AppHandle) -> Result<String, String> {
     .await
 }
 
+
+// ===== SQLite local records =====
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CandidateJob {
+    id: String,
+    title: String,
+    company: String,
+    salary: String,
+    city: String,
+    region: String,
+    tags: String,
+    href: String,
+    source: String,
+    track: String,
+    direction: String,
+    jd: String,
+    score: Option<i64>,
+    level: String,
+    reason: String,
+    highlights: String,
+    risks: String,
+    score_status: String,
+    created_at: i64,
+    updated_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ApplyRecordDb {
+    id: String,
+    company: String,
+    title: String,
+    applied_at: i64,
+    city: String,
+    region: String,
+    track: String,
+    direction: String,
+    salary: String,
+    href: String,
+    greeting: String,
+    synced: bool,
+    created_at: i64,
+    updated_at: i64,
+}
+
+fn now_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or_default()
+}
+
+fn db_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .or_else(|_| app.path().home_dir().map(|h| h.join("job-copilot")))
+        .map_err(|e| format!("找不到数据目录: {}", e))?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir.join("job-copilot.sqlite"))
+}
+
+fn open_db(app: &tauri::AppHandle) -> Result<Connection, String> {
+    let conn = Connection::open(db_path(app)?).map_err(|e| e.to_string())?;
+    init_db(&conn)?;
+    Ok(conn)
+}
+
+fn init_db(conn: &Connection) -> Result<(), String> {
+    conn.execute_batch(
+        r#"
+        CREATE TABLE IF NOT EXISTS candidate_jobs (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL DEFAULT '',
+            company TEXT NOT NULL DEFAULT '',
+            salary TEXT NOT NULL DEFAULT '',
+            city TEXT NOT NULL DEFAULT '',
+            region TEXT NOT NULL DEFAULT '',
+            tags TEXT NOT NULL DEFAULT '',
+            href TEXT NOT NULL DEFAULT '',
+            source TEXT NOT NULL DEFAULT '',
+            track TEXT NOT NULL DEFAULT '',
+            direction TEXT NOT NULL DEFAULT '',
+            jd TEXT NOT NULL DEFAULT '',
+            score INTEGER,
+            level TEXT NOT NULL DEFAULT '',
+            reason TEXT NOT NULL DEFAULT '',
+            highlights TEXT NOT NULL DEFAULT '',
+            risks TEXT NOT NULL DEFAULT '',
+            score_status TEXT NOT NULL DEFAULT 'pending',
+            created_at INTEGER NOT NULL DEFAULT 0,
+            updated_at INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_candidate_jobs_track ON candidate_jobs(track);
+        CREATE INDEX IF NOT EXISTS idx_candidate_jobs_city ON candidate_jobs(city);
+        CREATE INDEX IF NOT EXISTS idx_candidate_jobs_score_status ON candidate_jobs(score_status);
+
+        CREATE TABLE IF NOT EXISTS apply_records (
+            id TEXT PRIMARY KEY,
+            company TEXT NOT NULL DEFAULT '',
+            title TEXT NOT NULL DEFAULT '',
+            applied_at INTEGER NOT NULL DEFAULT 0,
+            city TEXT NOT NULL DEFAULT '',
+            region TEXT NOT NULL DEFAULT '',
+            track TEXT NOT NULL DEFAULT '',
+            direction TEXT NOT NULL DEFAULT '',
+            salary TEXT NOT NULL DEFAULT '',
+            href TEXT NOT NULL DEFAULT '',
+            greeting TEXT NOT NULL DEFAULT '',
+            synced INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL DEFAULT 0,
+            updated_at INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_apply_records_applied_at ON apply_records(applied_at);
+        CREATE INDEX IF NOT EXISTS idx_apply_records_city ON apply_records(city);
+        CREATE INDEX IF NOT EXISTS idx_apply_records_track ON apply_records(track);
+        "#,
+    )
+    .map_err(|e| e.to_string())
+}
+
+fn candidate_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CandidateJob> {
+    Ok(CandidateJob {
+        id: row.get("id")?,
+        title: row.get("title")?,
+        company: row.get("company")?,
+        salary: row.get("salary")?,
+        city: row.get("city")?,
+        region: row.get("region")?,
+        tags: row.get("tags")?,
+        href: row.get("href")?,
+        source: row.get("source")?,
+        track: row.get("track")?,
+        direction: row.get("direction")?,
+        jd: row.get("jd")?,
+        score: row.get("score")?,
+        level: row.get("level")?,
+        reason: row.get("reason")?,
+        highlights: row.get("highlights")?,
+        risks: row.get("risks")?,
+        score_status: row.get("score_status")?,
+        created_at: row.get("created_at")?,
+        updated_at: row.get("updated_at")?,
+    })
+}
+
+fn apply_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ApplyRecordDb> {
+    Ok(ApplyRecordDb {
+        id: row.get("id")?,
+        company: row.get("company")?,
+        title: row.get("title")?,
+        applied_at: row.get("applied_at")?,
+        city: row.get("city")?,
+        region: row.get("region")?,
+        track: row.get("track")?,
+        direction: row.get("direction")?,
+        salary: row.get("salary")?,
+        href: row.get("href")?,
+        greeting: row.get("greeting")?,
+        synced: row.get::<_, i64>("synced")? != 0,
+        created_at: row.get("created_at")?,
+        updated_at: row.get("updated_at")?,
+    })
+}
+
+fn candidate_select_sql() -> &'static str {
+    "SELECT id,title,company,salary,city,region,tags,href,source,track,direction,jd,score,level,reason,highlights,risks,score_status,created_at,updated_at FROM candidate_jobs"
+}
+
+fn apply_record_select_sql() -> &'static str {
+    "SELECT id,company,title,applied_at,city,region,track,direction,salary,href,greeting,synced,created_at,updated_at FROM apply_records"
+}
+
+fn fill_candidate_defaults(job: &mut CandidateJob) {
+    if job.id.trim().is_empty() {
+        let seed = format!("{}:{}:{}", job.title, job.company, job.href);
+        job.id = format!("job-{:x}", fnv64(&seed));
+    }
+    if job.source.trim().is_empty() {
+        job.source = "boss".to_string();
+    }
+    if job.score_status.trim().is_empty() {
+        job.score_status = "pending".to_string();
+    }
+}
+
+fn fill_apply_record_defaults(record: &mut ApplyRecordDb) {
+    if record.id.trim().is_empty() {
+        let seed = format!("{}:{}:{}", record.title, record.company, record.href);
+        record.id = format!("apply-{:x}", fnv64(&seed));
+    }
+}
+
+fn get_candidates_by_ids(conn: &Connection, ids: &[String]) -> Result<Vec<CandidateJob>, String> {
+    let mut out = Vec::new();
+    for id in ids {
+        let sql = format!("{} WHERE id = ?1", candidate_select_sql());
+        if let Some(row) = conn
+            .query_row(&sql, params![id], candidate_from_row)
+            .optional()
+            .map_err(|e| e.to_string())?
+        {
+            out.push(row);
+        }
+    }
+    Ok(out)
+}
+
+#[tauri::command]
+fn db_upsert_candidate_jobs(
+    app: tauri::AppHandle,
+    jobs: Vec<CandidateJob>,
+) -> Result<Vec<CandidateJob>, String> {
+    let mut conn = open_db(&app)?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let now = now_ms();
+    let mut ids = Vec::new();
+
+    for mut job in jobs {
+        fill_candidate_defaults(&mut job);
+        let created_at = if job.created_at > 0 { job.created_at } else { now };
+        let updated_at = now;
+        tx.execute(
+            r#"
+            INSERT INTO candidate_jobs (
+                id,title,company,salary,city,region,tags,href,source,track,direction,jd,
+                score,level,reason,highlights,risks,score_status,created_at,updated_at
+            ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20)
+            ON CONFLICT(id) DO UPDATE SET
+                title=excluded.title,
+                company=excluded.company,
+                salary=excluded.salary,
+                city=excluded.city,
+                region=excluded.region,
+                tags=excluded.tags,
+                href=excluded.href,
+                source=excluded.source,
+                track=excluded.track,
+                direction=excluded.direction,
+                jd=CASE WHEN excluded.jd <> '' THEN excluded.jd ELSE candidate_jobs.jd END,
+                score=COALESCE(excluded.score, candidate_jobs.score),
+                level=CASE WHEN excluded.level <> '' THEN excluded.level ELSE candidate_jobs.level END,
+                reason=CASE WHEN excluded.reason <> '' THEN excluded.reason ELSE candidate_jobs.reason END,
+                highlights=CASE WHEN excluded.highlights <> '' THEN excluded.highlights ELSE candidate_jobs.highlights END,
+                risks=CASE WHEN excluded.risks <> '' THEN excluded.risks ELSE candidate_jobs.risks END,
+                score_status=CASE WHEN excluded.score_status <> '' THEN excluded.score_status ELSE candidate_jobs.score_status END,
+                updated_at=excluded.updated_at
+            "#,
+            params![
+                &job.id,
+                &job.title,
+                &job.company,
+                &job.salary,
+                &job.city,
+                &job.region,
+                &job.tags,
+                &job.href,
+                &job.source,
+                &job.track,
+                &job.direction,
+                &job.jd,
+                job.score,
+                &job.level,
+                &job.reason,
+                &job.highlights,
+                &job.risks,
+                &job.score_status,
+                created_at,
+                updated_at,
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+        ids.push(job.id.clone());
+    }
+    tx.commit().map_err(|e| e.to_string())?;
+    get_candidates_by_ids(&conn, &ids)
+}
+
+#[tauri::command]
+fn db_list_candidate_jobs(app: tauri::AppHandle) -> Result<Vec<CandidateJob>, String> {
+    let conn = open_db(&app)?;
+    let sql = format!("{} ORDER BY updated_at DESC LIMIT 300", candidate_select_sql());
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], candidate_from_row)
+        .map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.map_err(|e| e.to_string())?);
+    }
+    Ok(out)
+}
+
+#[tauri::command]
+fn db_update_candidate_score(
+    app: tauri::AppHandle,
+    id: String,
+    score: i64,
+    level: String,
+    reason: String,
+    highlights: String,
+    risks: String,
+    score_status: String,
+) -> Result<CandidateJob, String> {
+    let conn = open_db(&app)?;
+    conn.execute(
+        "UPDATE candidate_jobs SET score=?2, level=?3, reason=?4, highlights=?5, risks=?6, score_status=?7, updated_at=?8 WHERE id=?1",
+        params![id, score, level, reason, highlights, risks, score_status, now_ms()],
+    )
+    .map_err(|e| e.to_string())?;
+    let sql = format!("{} WHERE id = ?1", candidate_select_sql());
+    conn.query_row(&sql, params![id], candidate_from_row)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn db_update_candidate_jd(
+    app: tauri::AppHandle,
+    id: String,
+    jd: String,
+) -> Result<CandidateJob, String> {
+    let conn = open_db(&app)?;
+    conn.execute(
+        "UPDATE candidate_jobs SET jd=?2, updated_at=?3 WHERE id=?1",
+        params![id, jd, now_ms()],
+    )
+    .map_err(|e| e.to_string())?;
+    let sql = format!("{} WHERE id = ?1", candidate_select_sql());
+    conn.query_row(&sql, params![id], candidate_from_row)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn db_add_apply_record(
+    app: tauri::AppHandle,
+    mut record: ApplyRecordDb,
+) -> Result<ApplyRecordDb, String> {
+    fill_apply_record_defaults(&mut record);
+    let conn = open_db(&app)?;
+    let now = now_ms();
+    let created_at = if record.created_at > 0 { record.created_at } else { now };
+    let updated_at = now;
+    conn.execute(
+        r#"
+        INSERT INTO apply_records (
+            id,company,title,applied_at,city,region,track,direction,salary,href,greeting,synced,created_at,updated_at
+        ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14)
+        ON CONFLICT(id) DO UPDATE SET
+            company=excluded.company,
+            title=excluded.title,
+            applied_at=excluded.applied_at,
+            city=excluded.city,
+            region=excluded.region,
+            track=excluded.track,
+            direction=excluded.direction,
+            salary=excluded.salary,
+            href=excluded.href,
+            greeting=excluded.greeting,
+            synced=excluded.synced,
+            updated_at=excluded.updated_at
+        "#,
+        params![
+            &record.id,
+            &record.company,
+            &record.title,
+            record.applied_at,
+            &record.city,
+            &record.region,
+            &record.track,
+            &record.direction,
+            &record.salary,
+            &record.href,
+            &record.greeting,
+            if record.synced { 1 } else { 0 },
+            created_at,
+            updated_at,
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+    let sql = format!("{} WHERE id = ?1", apply_record_select_sql());
+    conn.query_row(&sql, params![record.id], apply_record_from_row)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn db_list_apply_records(app: tauri::AppHandle) -> Result<Vec<ApplyRecordDb>, String> {
+    let conn = open_db(&app)?;
+    let sql = format!("{} ORDER BY applied_at DESC, updated_at DESC LIMIT 1000", apply_record_select_sql());
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], apply_record_from_row)
+        .map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.map_err(|e| e.to_string())?);
+    }
+    Ok(out)
+}
+
+#[tauri::command]
+fn db_migrate_apply_records(
+    app: tauri::AppHandle,
+    records: Vec<ApplyRecordDb>,
+) -> Result<usize, String> {
+    let mut count = 0;
+    for record in records {
+        db_add_apply_record(app.clone(), record)?;
+        count += 1;
+    }
+    Ok(count)
+}
 // ===== 文件 agent:本地求职工作区读写(路径安全) =====
 fn safe_join(root: &str, rel: &str) -> Result<PathBuf, String> {
     let root_p = PathBuf::from(root)
@@ -904,6 +1318,13 @@ pub fn run() {
             boss_fetch_jd,
             boss_apply,
             boss_replies,
+            db_upsert_candidate_jobs,
+            db_list_candidate_jobs,
+            db_update_candidate_score,
+            db_update_candidate_jd,
+            db_add_apply_record,
+            db_list_apply_records,
+            db_migrate_apply_records,
             fs_list,
             fs_read,
             fs_write,

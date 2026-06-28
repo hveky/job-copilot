@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { CheckCircle, ChevronDown, LoaderCircle } from "lucide-react";
 import type { Tier } from "../gateway/types";
+import type { ScoreProgress } from "../lib/jobWorkflow";
 
 export type ContentTaskState = "idle" | "fetching" | "thinking" | "generating" | "done" | "error";
 export type ApplyTaskState = "idle" | "running" | "waiting" | "done" | "error";
@@ -38,13 +39,16 @@ export function TaskStatusBar(props: {
   candidates: number;
   content: ContentTaskStatus;
   apply: ApplyTaskStatus;
+  score: ScoreProgress;
 }) {
   const [collapsed, setCollapsed] = useState(false);
-  const contentBusy = props.content.state === "fetching" || props.content.state === "thinking" || props.content.state === "generating";
   const applyBusy = props.apply.state === "running" || props.apply.state === "waiting";
   const fetchTarget = Math.max(150, props.candidates || 0);
-  const scoreTotal = props.candidates;
-  const scoreDone = contentBusy ? 0 : props.candidates > 0 ? props.candidates : 0;
+  const scoreTotal = props.score.total;
+  const scoreDone = props.score.done;
+  const scoreRunning = props.score.running > 0;
+  const scoreComplete = scoreTotal > 0 && scoreDone >= scoreTotal;
+  const scoreStatus = scoreRunning ? "评分中" : scoreComplete ? (props.score.failed > 0 ? "有失败" : "已完成") : "等待中";
   const eta = applyBusy
     ? Math.max(0, (props.apply.total - props.apply.done) * 60)
     : props.candidates < 150
@@ -79,8 +83,8 @@ export function TaskStatusBar(props: {
       <TaskCard
         index={3}
         title="匹配评分"
-        state={scoreTotal > 0 && scoreDone >= scoreTotal ? "done" : "pending"}
-        status={scoreTotal > 0 && scoreDone >= scoreTotal ? "已完成" : "等待中"}
+        state={scoreRunning ? "active" : scoreComplete ? "done" : "pending"}
+        status={scoreStatus}
         done={scoreDone}
         total={scoreTotal}
         wide
@@ -121,7 +125,7 @@ function TaskCard(props: {
     <div
       className={
         "flex h-[68px] shrink-0 items-center gap-3 rounded-lg border px-4 " +
-        (props.wide ? "w-[min(26vw,450px)] min-w-[260px]" : props.compact ? "w-[min(15vw,220px)] min-w-[170px]" : "w-[220px]") +
+        (props.wide ? "w-[min(26vw,450px)] min-w-[260px]" : props.compact ? "w-[min(18vw,280px)] min-w-[220px]" : "w-[220px]") +
         " " +
         (props.state === "active" ? "border-[#BFDBFE] bg-white" : "border-border bg-white")
       }
@@ -144,11 +148,11 @@ function TaskCard(props: {
           {props.state === "done" && <CheckCircle size={16} strokeWidth={1.85} className="ml-auto text-accent-strong" />}
           {props.state === "active" && <LoaderCircle size={15} strokeWidth={1.75} className="ml-auto spin text-[#1D6FEA]" />}
         </div>
-        <div className="mt-1 flex items-center gap-2 text-[12px] leading-4 text-text-2">
+        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] leading-4 text-text-2">
           <span className={props.state === "active" ? "text-[#1D6FEA]" : props.state === "done" ? "text-accent-strong" : ""}>{props.status}</span>
           {typeof props.done === "number" && typeof props.total === "number" && props.total > 0 && (
             <>
-              <span className="h-[6px] min-w-[80px] flex-1 overflow-hidden rounded-full bg-[#E5E7EB]">
+              <span className="h-[6px] min-w-[96px] flex-1 overflow-hidden rounded-full bg-[#E5E7EB]">
                 <i className={(props.state === "done" ? "bg-accent" : "bg-[#1D6FEA]") + " block h-full rounded-full"} style={{ width: `${pct}%` }} />
               </span>
               <span className="whitespace-nowrap">{props.done} / {props.total}</span>

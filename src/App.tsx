@@ -1,17 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { MessageSquare, ScrollText, FolderClosed } from "lucide-react";
+import { MessageSquare, FolderClosed } from "lucide-react";
 import { Header } from "./components/Header";
 import { AutoApplyFlow, type AutoApplyStep } from "./components/AutoApplyFlow";
-import { LeftNavRail } from "./components/LeftNavRail";
+import { LeftNavRail, type NavView } from "./components/LeftNavRail";
 import { ApplyQuotaCard, RiskControlCard } from "./components/ApplySidebarCards";
-import { BossPanel } from "./components/BossPanel";
+import { BossPanelV2 } from "./components/BossPanelV2";
 import { ReplyWorkspace } from "./components/ReplyWorkspace";
 import { FilesPanel } from "./components/FilesPanel";
-import { InstructionPanel } from "./components/InstructionPanel";
 import { JobPicker } from "./components/JobPicker";
 import { ResumeOnboard } from "./components/ResumeOnboard";
 import { SettingsModal } from "./components/Settings";
 import { ResumeBuilderModal } from "./components/ResumeBuilderModal";
+import { ProfilePage } from "./components/ProfilePage";
+import { ApplyRecordsPage } from "./components/ApplyRecordsPage";
 import { Tabs } from "./ui";
 import { getDaily, loadRecords } from "./lib/ledger";
 import {
@@ -32,17 +33,18 @@ import {
 import { sidebar as SB } from "./design/tokens";
 import { TaskStatusBar, type ApplyTaskStatus, type ContentTaskStatus } from "./components/TaskStatusBar";
 import type { Tier } from "./gateway/types";
+import type { ScoreProgress } from "./lib/jobWorkflow";
 
-type SbTab = "copilot" | "instruction" | "files";
+type SbTab = "copilot" | "files";
 
 const SB_TABS = [
   { key: "copilot" as const, label: "回复助手", icon: <MessageSquare size={16} strokeWidth={1.75} /> },
-  { key: "instruction" as const, label: "Instruction", icon: <ScrollText size={16} strokeWidth={1.75} /> },
   { key: "files" as const, label: "文件", icon: <FolderClosed size={16} strokeWidth={1.75} /> },
 ];
 
 export function App() {
   const [settings, setSettings] = useState<Settings>(loadSettings);
+  const [activeView, setActiveView] = useState<NavView>("workbench");
   const [showSettings, setShowSettings] = useState(false);
   const [showResume, setShowResume] = useState(false);
   const [jd, setJd] = useState("");
@@ -56,6 +58,13 @@ export function App() {
     state: "idle",
     done: 0,
     total: 0,
+  });
+  const [scoreStatus, setScoreStatus] = useState<ScoreProgress>({
+    total: 0,
+    done: 0,
+    running: 0,
+    failed: 0,
+    pending: 0,
   });
   const [sbTab, setSbTab] = useState<SbTab>("copilot");
   const [sidebarOpen, setSidebarOpen] = useState(
@@ -205,73 +214,86 @@ export function App() {
       />
 
       <div className="flex min-h-0 w-full flex-1 bg-workbench">
-        <LeftNavRail onOpenSettings={() => setShowSettings(true)} />
+        <LeftNavRail active={activeView} onNavigate={setActiveView} onOpenSettings={() => setShowSettings(true)} />
 
         <main className="min-w-0 flex-1 overflow-auto px-4 py-4 lg:px-[18px]">
-          <div className="mx-auto grid max-w-none gap-3 xl:gap-4">
-            <AutoApplyFlow current={autoStep} />
+          {activeView === "workbench" && (
+            <div className="mx-auto grid max-w-none gap-3 xl:gap-4">
+              <AutoApplyFlow current={autoStep} />
 
-            <div className="grid gap-3 xl:grid-cols-[376px_minmax(0,1fr)] 2xl:grid-cols-[376px_minmax(0,1fr)]">
-              <aside className="grid content-start gap-3">
-                <JobPicker
-                  gateway={gateway}
-                  resume={resumeText}
-                  targetJobs={settings.targetJobs}
-                  activeJob={settings.activeJob}
-                  jobHistory={settings.jobHistory}
-                  cities={settings.cities}
-                  city={settings.city}
-                  salary={settings.salary}
-                  onJobsChange={(targetJobs) => patch({ targetJobs })}
-                  onActiveChange={(activeJob) => patch({ activeJob })}
-                  onHistoryChange={(jobHistory) => patch({ jobHistory })}
-                  onCitiesChange={(cities) => patch({ cities })}
-                  onCityChange={(city) => patch({ city })}
-                  onSalaryChange={(salary) => patch({ salary })}
-                />
-                <ApplyQuotaCard
-                  todayApplied={todayApplied}
-                  dailyCap={settings.dailyCap}
-                  totalApplied={totalApplied}
-                />
-                <RiskControlCard
-                  todayApplied={todayApplied}
-                  dailyCap={settings.dailyCap}
-                  delayMin={settings.delayMin}
-                  delayMax={settings.delayMax}
-                />
-              </aside>
+              <div className="grid gap-3 xl:grid-cols-[376px_minmax(0,1fr)] 2xl:grid-cols-[376px_minmax(0,1fr)]">
+                <aside className="grid content-start gap-3">
+                  <JobPicker
+                    gateway={gateway}
+                    resume={resumeText}
+                    targetJobs={settings.targetJobs}
+                    activeJob={settings.activeJob}
+                    jobHistory={settings.jobHistory}
+                    cities={settings.cities}
+                    city={settings.city}
+                    salary={settings.salary}
+                    onJobsChange={(targetJobs) => patch({ targetJobs })}
+                    onActiveChange={(activeJob) => patch({ activeJob })}
+                    onHistoryChange={(jobHistory) => patch({ jobHistory })}
+                    onCitiesChange={(cities) => patch({ cities })}
+                    onCityChange={(city) => patch({ city })}
+                    onSalaryChange={(salary) => patch({ salary })}
+                  />
+                  <ApplyQuotaCard
+                    todayApplied={todayApplied}
+                    dailyCap={settings.dailyCap}
+                    totalApplied={totalApplied}
+                  />
+                  <RiskControlCard
+                    todayApplied={todayApplied}
+                    dailyCap={settings.dailyCap}
+                    delayMin={settings.delayMin}
+                    delayMax={settings.delayMax}
+                  />
+                </aside>
 
-              <section className="min-w-0">
-                <BossPanel
-                  gateway={gateway}
-                  job={settings.activeJob}
-                  city={settings.city}
-                  salary={settings.salary}
-                  resume={resumeText}
-                  instruction={settings.instruction}
-                  dailyCap={settings.dailyCap}
-                  delayMin={settings.delayMin}
-                  delayMax={settings.delayMax}
-                  feishuAppId={settings.feishuAppId || BUILTIN_FEISHU.clientId}
-                  feishuAppSecret={settings.feishuAppSecret || BUILTIN_FEISHU.clientSecret}
-                  feishuUserToken={settings.feishuUserToken}
-                  feishuBaseToken={settings.feishuBaseToken}
-                  feishuTableId={settings.feishuTableId}
-                  root={root}
-                  inboxRefreshKey={inboxKey}
-                  contentTier={contentTier}
-                  onContentTierChange={onContentTierChange}
-                  onPickJd={setJd}
-                  onGenerated={onGenerated}
-                  onCandidateCount={setCandidates}
-                  onContentStatus={setContentStatus}
-                  onApplyStatus={setApplyStatus}
-                  onApplied={() => setMetricsKey((k) => k + 1)}
-                />
-              </section>
+                <section className="min-w-0">
+                  <BossPanelV2
+                    gateway={gateway}
+                    job={settings.activeJob}
+                    city={settings.city}
+                    salary={settings.salary}
+                    resume={resumeText}
+                    instruction={settings.instruction}
+                    dailyCap={settings.dailyCap}
+                    delayMin={settings.delayMin}
+                    delayMax={settings.delayMax}
+                    feishuAppId={settings.feishuAppId || BUILTIN_FEISHU.clientId}
+                    feishuAppSecret={settings.feishuAppSecret || BUILTIN_FEISHU.clientSecret}
+                    feishuUserToken={settings.feishuUserToken}
+                    feishuBaseToken={settings.feishuBaseToken}
+                    feishuTableId={settings.feishuTableId}
+                    root={root}
+                    inboxRefreshKey={inboxKey}
+                    contentTier={contentTier}
+                    onContentTierChange={onContentTierChange}
+                    onPickJd={setJd}
+                    onGenerated={onGenerated}
+                    onCandidateCount={setCandidates}
+                    onContentStatus={setContentStatus}
+                    onApplyStatus={setApplyStatus}
+                    onScoreStatus={setScoreStatus}
+                    onApplied={() => setMetricsKey((k) => k + 1)}
+                  />
+                </section>
+              </div>
             </div>
-          </div>
+          )}
+          {activeView === "profile" && (
+            <ProfilePage
+              resumeText={resumeText}
+              instruction={settings.instruction}
+              gateway={gateway}
+              onInstructionChange={(instruction) => patch({ instruction })}
+              onOpenResume={() => setShowResume(true)}
+            />
+          )}
+          {activeView === "records" && <ApplyRecordsPage />}
         </main>
 
         {sidebarOpen && !narrow && (
@@ -312,14 +334,6 @@ export function App() {
                 instruction={settings.instruction}
               />
             )}
-            {sbTab === "instruction" && (
-              <InstructionPanel
-                value={settings.instruction}
-                onChange={(instruction) => patch({ instruction })}
-                gateway={gateway}
-                resume={resumeText}
-              />
-            )}
             {sbTab === "files" && (
               <FilesPanel
                 gateway={gateway}
@@ -344,6 +358,7 @@ export function App() {
           model: contentTier === "deep" ? settings.modelPro : settings.modelFlash,
         }}
         apply={applyStatus}
+        score={scoreStatus}
       />
 
       {needResume && root && (

@@ -42,6 +42,7 @@ export interface BossJob {
   salary: string;
   company: string;
   tags: string;
+  area?: string;
 }
 
 export interface BossJd {

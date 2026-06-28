@@ -1,4 +1,18 @@
 import { useEffect, useRef, useState } from "react";
+import {
+  File as FileIcon,
+  Folder,
+  FolderOpen,
+  ChevronRight,
+  ChevronDown,
+  RefreshCw,
+  Send,
+  Eye,
+  Pencil,
+  Check,
+  ArrowLeft,
+} from "lucide-react";
+import { Button } from "../ui";
 import { chatToolsRaw } from "../gateway/client";
 import type { GatewayConfig } from "../gateway/types";
 import { fsList, fsRead, fsWrite } from "../lib/tauri";
@@ -314,7 +328,10 @@ export function FilesPanel(props: {
             style={pad}
             onClick={() => openFile(c.path)}
           >
-            <span className="tree-icon">📄</span>
+            <span className="tree-caret" />
+            <span className="tree-icon text-muted">
+              <FileIcon size={15} strokeWidth={1.75} />
+            </span>
             {c.name}
           </div>
         );
@@ -323,8 +340,20 @@ export function FilesPanel(props: {
       return (
         <div key={c.path}>
           <div className="tree-row" style={pad} onClick={() => toggle(c.path)}>
-            <span className="tree-caret">{open ? "▾" : "▸"}</span>
-            <span className="tree-icon">{open ? "📂" : "📁"}</span>
+            <span className="tree-caret">
+              {open ? (
+                <ChevronDown size={13} strokeWidth={2} />
+              ) : (
+                <ChevronRight size={13} strokeWidth={2} />
+              )}
+            </span>
+            <span className="tree-icon text-accent-strong">
+              {open ? (
+                <FolderOpen size={15} strokeWidth={1.75} />
+              ) : (
+                <Folder size={15} strokeWidth={1.75} />
+              )}
+            </span>
             {c.name}
           </div>
           {open && renderNode(c, depth + 1)}
@@ -354,7 +383,14 @@ export function FilesPanel(props: {
     <div style={{ display: "flex", flexDirection: "column", minHeight: 0, flex: 1 }}>
       <div className="files-head">
         <span className="spacer" style={{ flex: 1 }} />
-        <button className="small ghost" onClick={refresh}>刷新</button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={refresh}
+          icon={<RefreshCw size={14} strokeWidth={1.75} />}
+        >
+          刷新
+        </Button>
       </div>
 
       <div ref={bodyRef} className="files-body">
@@ -362,9 +398,14 @@ export function FilesPanel(props: {
           {sel ? (
             <div className="file-editor">
               <div className="row" style={{ marginBottom: 6 }}>
-                <button className="small ghost" onClick={() => setSel("")}>
-                  ← 列表
-                </button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSel("")}
+                  icon={<ArrowLeft size={14} strokeWidth={1.75} />}
+                >
+                  列表
+                </Button>
                 <span
                   className="hint"
                   style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
@@ -372,12 +413,29 @@ export function FilesPanel(props: {
                 >
                   {sel}
                 </span>
-                <button className="small ghost" onClick={() => setFileEditing((e) => !e)}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setFileEditing((e) => !e)}
+                  icon={
+                    fileEditing ? (
+                      <Eye size={14} strokeWidth={1.75} />
+                    ) : (
+                      <Pencil size={14} strokeWidth={1.75} />
+                    )
+                  }
+                >
                   {fileEditing ? "预览" : "编辑"}
-                </button>
-                <button className="small primary" disabled={!dirty} onClick={saveFile}>
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  disabled={!dirty}
+                  onClick={saveFile}
+                  icon={<Check size={14} strokeWidth={1.75} />}
+                >
                   {dirty ? "保存" : "已保存"}
-                </button>
+                </Button>
               </div>
               <div
                 style={{
@@ -440,8 +498,8 @@ export function FilesPanel(props: {
                 {pending.content.length > 600 ? "…" : ""}
               </div>
               <div className="row" style={{ marginTop: 6 }}>
-                <button className="ghost small" onClick={() => answerWrite(false)}>拒绝</button>
-                <button className="primary small" onClick={() => answerWrite(true)}>确认写入</button>
+                <Button variant="ghost" size="sm" onClick={() => answerWrite(false)}>拒绝</Button>
+                <Button variant="primary" size="sm" onClick={() => answerWrite(true)}>确认写入</Button>
               </div>
             </div>
           )}
@@ -486,9 +544,14 @@ export function FilesPanel(props: {
                 }
               }}
             />
-            <button className="primary" disabled={running} onClick={runAgent}>
+            <Button
+              variant="primary"
+              loading={running}
+              onClick={runAgent}
+              icon={<Send size={16} strokeWidth={1.75} />}
+            >
               {running ? "运行中…" : "发送"}
-            </button>
+            </Button>
           </div>
         </div>
       </div>

@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { BriefcaseBusiness, MapPin, BadgeDollarSign, Sparkles, Plus } from "lucide-react";
+import { Button } from "../ui";
 import { chat, GatewayError } from "../gateway/client";
 import type { GatewayConfig } from "../gateway/types";
 import { recommendSystem, recommendUser } from "../prompts/templates";
@@ -98,7 +100,10 @@ export function JobPicker(props: {
 
   return (
     <div className="card">
-      <h3>① 目标岗位</h3>
+      <h3 className="flex items-center gap-2">
+        <BriefcaseBusiness size={18} strokeWidth={1.75} className="text-accent-strong" />
+        目标岗位
+      </h3>
 
       <div className="tracks">
         {props.targetJobs.length === 0 && (
@@ -147,15 +152,16 @@ export function JobPicker(props: {
             }
           }}
         />
-        <button
-          className="small"
+        <Button
+          size="sm"
           onClick={() => {
             addJob(custom);
             setCustom("");
           }}
+          icon={<Plus size={14} strokeWidth={1.75} />}
         >
           添加
-        </button>
+        </Button>
       </div>
 
       {historySuggest.length > 0 && (
@@ -173,7 +179,9 @@ export function JobPicker(props: {
 
       <div style={{ marginTop: 12 }}>
         <div className="row" style={{ gap: 8 }}>
-          <span className="hint">城市</span>
+          <span className="hint inline-flex items-center gap-1">
+            <MapPin size={14} strokeWidth={1.75} />城市
+          </span>
           <select
             style={{ width: 120 }}
             value=""
@@ -190,7 +198,9 @@ export function JobPicker(props: {
           </select>
           <span className="hint">点城市设为当前(用于搜索)</span>
           <span style={{ flex: 1 }} />
-          <span className="hint">薪资</span>
+          <span className="hint inline-flex items-center gap-1">
+            <BadgeDollarSign size={14} strokeWidth={1.75} />薪资
+          </span>
           <select
             style={{ width: 110 }}
             value={props.salary}
@@ -237,9 +247,14 @@ export function JobPicker(props: {
             placeholder="想投什么也可以直接说(可空,AI 据简历推荐)"
             onChange={(e) => setWish(e.target.value)}
           />
-          <button className="small" disabled={recing} onClick={recommend}>
+          <Button
+            size="sm"
+            loading={recing}
+            onClick={recommend}
+            icon={<Sparkles size={14} strokeWidth={1.75} />}
+          >
             {recing ? "推荐中…" : "AI 荐岗"}
-          </button>
+          </Button>
         </div>
         {recs.length > 0 && (
           <div className="tracks" style={{ marginTop: 8 }}>

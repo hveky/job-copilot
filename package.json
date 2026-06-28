@@ -18,16 +18,20 @@
     "@tauri-apps/plugin-http": "^2.5.2",
     "@types/dompurify": "^3.0.5",
     "dompurify": "^3.4.11",
+    "html-to-image": "^1.11.13",
+    "lucide-react": "^1.21.0",
     "marked": "^18.0.5",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "html-to-image": "^1.11.13"
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.3",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.5.2",
+    "postcss": "^8.5.15",
+    "tailwindcss": "^3.4.19",
     "typescript": "^5.7.2",
     "vite": "^6.0.7"
   }

@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import { Sparkles, Square, Eye, Pencil, Check } from "lucide-react";
 import { MarkdownView } from "./MarkdownView";
+import { Button } from "../ui";
 import { chat, GatewayError } from "../gateway/client";
 import type { GatewayConfig } from "../gateway/types";
 import { instructionHelpSystem } from "../prompts/templates";
@@ -71,9 +73,20 @@ export function InstructionPanel(props: {
         <span className="hint" style={{ flex: 1 }}>
           主控指令(相当于 CLAUDE.md)— 注入<strong>每一次</strong>生成与回复
         </span>
-        <button className="small ghost" onClick={() => setEditing((e) => !e)}>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setEditing((e) => !e)}
+          icon={
+            editing ? (
+              <Eye size={14} strokeWidth={1.75} />
+            ) : (
+              <Pencil size={14} strokeWidth={1.75} />
+            )
+          }
+        >
           {editing ? "预览" : "编辑"}
-        </button>
+        </Button>
       </div>
 
       {/* AI 帮写:一句话诉求 → 展开成主控指令 */}
@@ -92,13 +105,24 @@ export function InstructionPanel(props: {
           }}
         />
         {busy ? (
-          <button className="small ghost" onClick={() => abortRef.current?.abort()}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => abortRef.current?.abort()}
+            icon={<Square size={14} strokeWidth={1.75} />}
+          >
             停止
-          </button>
+          </Button>
         ) : (
-          <button className="small primary" onClick={generate} title="让 AI 帮你写主控指令">
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={generate}
+            icon={<Sparkles size={14} strokeWidth={1.75} />}
+            title="让 AI 帮你写主控指令"
+          >
             AI 帮写
-          </button>
+          </Button>
         )}
       </div>
       {busy && <div className="hint">✍️ 生成中…(会覆盖下方编辑框,生成后记得点保存)</div>}
@@ -114,9 +138,14 @@ export function InstructionPanel(props: {
       </div>
 
       <div className="row">
-        <button className="primary" disabled={!dirty} onClick={save}>
-          {saved ? "已保存 ✓" : dirty ? "保存" : "已保存 ✓"}
-        </button>
+        <Button
+          variant="primary"
+          disabled={!dirty}
+          onClick={save}
+          icon={<Check size={16} strokeWidth={1.75} />}
+        >
+          {saved ? "已保存" : dirty ? "保存" : "已保存"}
+        </Button>
         {dirty && <span className="hint">有未保存改动</span>}
       </div>
     </div>

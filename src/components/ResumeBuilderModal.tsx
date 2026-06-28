@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { Sparkles, Save, ImageDown, X } from "lucide-react";
+import { Button } from "../ui";
 import { chat } from "../gateway/client";
 import type { GatewayConfig } from "../gateway/types";
 import { resumeExtractSystem } from "../prompts/templates";
@@ -201,14 +203,35 @@ export function ResumeBuilderModal(props: {
         {/* Header */}
         <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
           <h2 style={{ margin: 0, flex: 1 }}>简历编辑器</h2>
-          <button className="small ghost" disabled={busy} onClick={aiExtract}>
+          <Button
+            variant="ghost"
+            size="sm"
+            loading={busy}
+            onClick={aiExtract}
+            icon={<Sparkles size={14} strokeWidth={1.75} />}
+          >
             {busy ? "AI 处理中…" : "AI 从简历抽取预填"}
-          </button>
-          <button className="small ghost" onClick={save}>保存</button>
-          <button className="small primary" disabled={busy} onClick={exportPng}>
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={save}
+            icon={<Save size={14} strokeWidth={1.75} />}
+          >
+            保存
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            loading={busy}
+            onClick={exportPng}
+            icon={<ImageDown size={14} strokeWidth={1.75} />}
+          >
             {busy ? "导出中…" : "导出 PNG"}
+          </Button>
+          <button className="icon-btn ghost" onClick={props.onClose} title="关闭">
+            <X size={18} strokeWidth={1.75} />
           </button>
-          <button className="small ghost" onClick={props.onClose}>✕</button>
         </div>
 
         {(err || note) && (

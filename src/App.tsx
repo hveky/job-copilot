@@ -1,4 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { MessageSquare, ScrollText, FolderClosed } from "lucide-react";
+import { Header } from "./components/Header";
+import { WorkflowRail, type WorkflowStep } from "./components/WorkflowRail";
+import { HeroSummaryCard } from "./components/HeroSummaryCard";
 import { BossPanel } from "./components/BossPanel";
 import { ContentPanel } from "./components/ContentPanel";
 import { Copilot } from "./components/Copilot";
@@ -9,6 +13,8 @@ import { JobPicker } from "./components/JobPicker";
 import { ResumeOnboard } from "./components/ResumeOnboard";
 import { SettingsModal } from "./components/Settings";
 import { ResumeBuilderModal } from "./components/ResumeBuilderModal";
+import { Tabs } from "./ui";
+import { getDaily, loadApplied } from "./lib/ledger";
 import {
   loadSettings,
   saveSettings,
@@ -24,8 +30,15 @@ import {
   listenJobsReceived,
   readResume,
 } from "./lib/tauri";
+import { sidebar as SB } from "./design/tokens";
 
 type SbTab = "copilot" | "instruction" | "files";
+
+const SB_TABS = [
+  { key: "copilot" as const, label: "回复助手", icon: <MessageSquare size={16} strokeWidth={1.75} /> },
+  { key: "instruction" as const, label: "Instruction", icon: <ScrollText size={16} strokeWidth={1.75} /> },
+  { key: "files" as const, label: "文件", icon: <FolderClosed size={16} strokeWidth={1.75} /> },
+];
 
 export function App() {
   const [settings, setSettings] = useState<Settings>(loadSettings);
@@ -33,9 +46,25 @@ export function App() {
   const [showResume, setShowResume] = useState(false);
   const [jd, setJd] = useState("");
   const [sbTab, setSbTab] = useState<SbTab>("copilot");
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(
+    () => typeof window === "undefined" || window.innerWidth >= 768,
+  );
+  const [narrow, setNarrow] = useState(
+    () => typeof window !== "undefined" && window.innerWidth < 768,
+  );
   const [sbWidth, setSbWidth] = useState(settings.sidebarWidth);
   const widthRef = useRef(settings.sidebarWidth);
+
+  // 窄屏(<768)：右侧助手默认折叠，展开时以抽屉(overlay)形式出现，主区不被挤压
+  useEffect(() => {
+    const onResize = () => {
+      const isNarrow = window.innerWidth < 768;
+      setNarrow(isNarrow);
+      if (isNarrow) setSidebarOpen(false);
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   // 文件优先:固定数据根目录 + 简历从 resumes/ 读取
   const [root, setRoot] = useState("");
@@ -44,6 +73,12 @@ export function App() {
   const [fileToOpen, setFileToOpen] = useState("");
   // BOSS 扩展推送岗位时自增,触发收件箱刷新
   const [inboxKey, setInboxKey] = useState(0);
+  // 总览指标
+  const [candidates, setCandidates] = useState(0);
+  const [metricsKey, setMetricsKey] = useState(0);
+
+  const todayApplied = useMemo(() => getDaily(), [metricsKey]);
+  const totalApplied = useMemo(() => loadApplied().size, [metricsKey, inboxKey]);
 
   async function refreshResume(r: string) {
     if (!r) return;
@@ -95,9 +130,8 @@ export function App() {
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
     const move = (ev: MouseEvent) => {
-      // 下限 300;上限取 760 与「窗口宽 - 360(留给主区)」的较小值,窄窗下主区不被挤没
-      const upper = Math.min(760, Math.max(300, window.innerWidth - 360));
-      const w = Math.min(upper, Math.max(300, window.innerWidth - ev.clientX));
+      const upper = Math.min(SB.maxWidth, Math.max(SB.minWidth, window.innerWidth - 360));
+      const w = Math.min(upper, Math.max(SB.minWidth, window.innerWidth - ev.clientX));
       widthRef.current = w;
       setSbWidth(w);
     };
@@ -114,10 +148,6 @@ export function App() {
 
   const gateway = useMemo(() => toGatewayConfig(settings), [settings]);
   const hasKey = !!settings.dsKey;
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = settings.theme;
-  }, [settings.theme]);
 
   function patch(p: Partial<Settings>) {
     setSettings((cur) => {
@@ -140,50 +170,35 @@ export function App() {
     setFileToOpen(path);
   }
 
-  return (
-    <div className="app">
-      <header className="topbar">
-        <span className="brand">求职作战助手</span>
-        <span className="badge">M1 · 内容生成 + 回复助手</span>
-        <span className="spacer" />
-        {!hasKey && (
-          <span className="badge" style={{ color: "var(--warn)" }}>
-            ⚠ 未配置 DeepSeek Key
-          </span>
-        )}
-        <button
-          className="small"
-          title="切换浅色 / 深色"
-          onClick={() =>
-            patch({ theme: settings.theme === "dark" ? "light" : "dark" })
-          }
-        >
-          {settings.theme === "dark" ? "浅色" : "深色"}
-        </button>
-        <button className="small" onClick={() => setShowResume(true)}>
-          简历
-        </button>
-        <button className="small" onClick={() => setShowSettings(true)}>
-          设置
-        </button>
-        <button
-          className="small"
-          title={sidebarOpen ? "折叠右侧边栏" : "展开右侧边栏"}
-          onClick={() => setSidebarOpen((v) => !v)}
-        >
-          {sidebarOpen ? "» 边栏" : "« 边栏"}
-        </button>
-      </header>
+  const workflowStep: WorkflowStep = !settings.activeJob
+    ? "filter"
+    : !jd.trim()
+      ? "fetch"
+      : "generate";
 
-      <div
-        className={"body" + (sidebarOpen ? "" : " collapsed")}
-        style={
-          sidebarOpen
-            ? { gridTemplateColumns: `minmax(0,1fr) 6px ${sbWidth}px` }
-            : undefined
-        }
-      >
-        <main className="main">
+  return (
+    <div className="flex h-screen flex-col bg-bg text-text">
+      <Header
+        statusLabel="M1 · 内容生成 + 回复助手"
+        hasKey={hasKey}
+        sidebarOpen={sidebarOpen}
+        onOpenResume={() => setShowResume(true)}
+        onOpenSettings={() => setShowSettings(true)}
+        onToggleSidebar={() => setSidebarOpen((v) => !v)}
+      />
+
+      <div className="mx-auto flex w-full max-w-shell min-h-0 flex-1">
+        <main className="min-w-0 flex-1 overflow-auto px-6 py-5">
+          <HeroSummaryCard
+            activeJob={settings.activeJob}
+            city={settings.city}
+            salary={settings.salary}
+            todayApplied={todayApplied}
+            totalApplied={totalApplied}
+            candidates={candidates}
+          />
+          <WorkflowRail current={workflowStep} />
+
           <JobPicker
             gateway={gateway}
             resume={resumeText}
@@ -217,12 +232,14 @@ export function App() {
             feishuTableId={settings.feishuTableId}
             root={root}
             onPickJd={setJd}
+            onApplied={() => setMetricsKey((k) => k + 1)}
           />
           <JobInbox
             root={root}
             refreshKey={inboxKey}
             onUseJd={setJd}
             onUseJob={(t) => patch({ activeJob: t })}
+            onCount={setCandidates}
           />
           <ContentPanel
             gateway={gateway}
@@ -237,32 +254,35 @@ export function App() {
           />
         </main>
 
-        {sidebarOpen && (
-          <div className="divider" onMouseDown={startDrag} title="拖拽调整边栏宽度" />
+        {sidebarOpen && !narrow && (
+          <div
+            className="w-1.5 cursor-col-resize bg-border transition-colors hover:bg-accent"
+            onMouseDown={startDrag}
+            title="拖拽调整助手宽度"
+          />
+        )}
+
+        {sidebarOpen && narrow && (
+          <div
+            className="fixed inset-0 z-40 bg-[rgba(15,23,42,0.4)]"
+            onClick={() => setSidebarOpen(false)}
+          />
         )}
 
         {sidebarOpen && (
-          <aside className="sidebar">
-            <div className="sb-tabs">
-              <button
-                className={sbTab === "copilot" ? "active" : ""}
-                onClick={() => setSbTab("copilot")}
-              >
-                回复助手
-              </button>
-              <button
-                className={sbTab === "instruction" ? "active" : ""}
-                onClick={() => setSbTab("instruction")}
-              >
-                Instruction
-              </button>
-              <button
-                className={sbTab === "files" ? "active" : ""}
-                onClick={() => setSbTab("files")}
-              >
-                文件
-              </button>
-            </div>
+          <aside
+            className={
+              "flex min-h-0 flex-col border-l border-border bg-surface shrink-0 " +
+              (narrow ? "fixed inset-y-0 right-0 z-40 shadow-pop" : "")
+            }
+            style={{ width: narrow ? Math.min(sbWidth, window.innerWidth * 0.92) : sbWidth }}
+          >
+            <Tabs
+              items={SB_TABS}
+              active={sbTab}
+              onChange={setSbTab}
+              variant="underline"
+            />
             {sbTab === "copilot" && (
               <Copilot
                 gateway={gateway}
@@ -306,7 +326,10 @@ export function App() {
           gateway={gateway}
           root={root}
           resumeText={resumeText}
-          onClose={() => { setShowResume(false); refreshResume(root); }}
+          onClose={() => {
+            setShowResume(false);
+            refreshResume(root);
+          }}
         />
       )}
 

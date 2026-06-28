@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { Inbox, RefreshCw, ExternalLink, Sparkles, Lightbulb } from "lucide-react";
+import { Button } from "../ui";
 import { fsList, fsRead } from "../lib/tauri";
 
 interface InboxJob {
@@ -47,6 +49,7 @@ export function JobInbox(props: {
   refreshKey: number;
   onUseJd: (jd: string) => void;
   onUseJob?: (title: string) => void;
+  onCount?: (n: number) => void;
 }) {
   const [jobs, setJobs] = useState<InboxJob[]>([]);
   const [loading, setLoading] = useState(false);
@@ -72,6 +75,7 @@ export function JobInbox(props: {
       }
       out.sort((a, b) => b.score - a.score);
       setJobs(out);
+      props.onCount?.(out.length);
     } catch (e) {
       setErr(String(e));
     } finally {
@@ -94,17 +98,24 @@ export function JobInbox(props: {
   return (
     <div className="card">
       <div className="row">
-        <h3 style={{ flex: 1, margin: 0 }}>
-          📥 候选岗位（BOSS 扩展推送）
+        <h3 style={{ flex: 1, margin: 0 }} className="flex items-center gap-2">
+          <Inbox size={18} strokeWidth={1.75} className="text-accent-strong" />
+          候选岗位（BOSS 扩展推送）
           {jobs.length > 0 && (
-            <span className="hint" style={{ marginLeft: 8, fontWeight: 400 }}>
+            <span className="hint" style={{ fontWeight: 400 }}>
               共 {jobs.length} 个
             </span>
           )}
         </h3>
-        <button className="small ghost" disabled={loading} onClick={refresh}>
+        <Button
+          variant="ghost"
+          size="sm"
+          loading={loading}
+          onClick={refresh}
+          icon={<RefreshCw size={14} strokeWidth={1.75} />}
+        >
           {loading ? "刷新中…" : "刷新"}
-        </button>
+        </Button>
       </div>
 
       {err && <div className="err">{err}</div>}
@@ -134,7 +145,7 @@ export function JobInbox(props: {
                 </div>
                 {j.reason && (
                   <div
-                    className="hint"
+                    className="hint inline-flex max-w-full items-center gap-1"
                     style={{
                       marginTop: 2,
                       overflow: "hidden",
@@ -143,29 +154,31 @@ export function JobInbox(props: {
                     }}
                     title={j.reason}
                   >
-                    💡 {j.reason}
+                    <Lightbulb size={13} strokeWidth={1.75} className="shrink-0" />
+                    <span className="truncate">{j.reason}</span>
                   </div>
                 )}
               </div>
               {j.href && (
                 <a
-                  className="small ghost"
+                  className="inline-flex items-center gap-1 rounded border border-border bg-surface px-2 py-1.5 text-aux text-text-2 no-underline hover:border-accent hover:text-accent-strong"
                   href={j.href}
                   target="_blank"
                   rel="noreferrer"
                   title="在浏览器打开 BOSS 原岗位"
-                  style={{ textDecoration: "none" }}
                 >
+                  <ExternalLink size={14} strokeWidth={1.75} />
                   原岗位
                 </a>
               )}
-              <button
-                className="small primary"
+              <Button
+                size="sm"
                 onClick={() => use(j)}
+                icon={<Sparkles size={14} strokeWidth={1.75} />}
                 title="把这份 JD 灌进下方生成器，一键生成应试内容包"
               >
                 用这个 JD 备战
-              </button>
+              </Button>
             </div>
           ))}
         </div>

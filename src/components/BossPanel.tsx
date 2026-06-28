@@ -1,5 +1,16 @@
 import { useState } from "react";
 import {
+  Bot,
+  KeyRound,
+  Download,
+  Send,
+  RefreshCw,
+  ShieldCheck,
+  ArrowRight,
+  ExternalLink,
+} from "lucide-react";
+import { Button } from "../ui";
+import {
   isDesktop,
   openBossWindow,
   bossSearch,
@@ -43,6 +54,7 @@ export function BossPanel(props: {
   feishuTableId: string;
   root: string;
   onPickJd: (jd: string) => void;
+  onApplied?: () => void;
 }) {
   const [err, setErr] = useState("");
   const [opening, setOpening] = useState(false);
@@ -75,6 +87,7 @@ export function BossPanel(props: {
   function handleApplied(rec: ApplyRecord) {
     addRecord(rec);
     setAppliedIds((s) => new Set(s).add(rec.id));
+    props.onApplied?.();
   }
 
   async function syncFeishu() {
@@ -165,7 +178,10 @@ export function BossPanel(props: {
   if (!desktop) {
     return (
       <div className="card">
-        <h3>BOSS 自动投递 · 桌面版</h3>
+        <h3 className="flex items-center gap-2">
+          <Bot size={18} strokeWidth={1.75} className="text-accent-strong" />
+          BOSS 自动投递 · 桌面版
+        </h3>
         <p className="hint" style={{ marginTop: 0 }}>
           此功能仅<strong>桌面版</strong>可用——需要内置浏览器承载 BOSS 登录与自动化。
           当前是网页预览版,请用 <code>npx tauri dev</code> 启动桌面版体验。
@@ -176,7 +192,10 @@ export function BossPanel(props: {
 
   return (
     <div className="card">
-      <h3>BOSS 自动投递 · 桌面版</h3>
+      <h3 className="flex items-center gap-2">
+        <Bot size={18} strokeWidth={1.75} className="text-accent-strong" />
+        BOSS 自动投递 · 桌面版
+      </h3>
       <p className="hint" style={{ marginTop: 0 }}>
         打开内置 BOSS 浏览器扫码登录(登录态记住),再按当前目标岗位
         <strong>「{props.job || "（未选）"}」</strong> + 城市
@@ -198,24 +217,50 @@ export function BossPanel(props: {
         </div>
       </div>
       <div className="row" style={{ flexWrap: "wrap" }}>
-        <button className="ghost" disabled={opening} onClick={open}>
+        <Button
+          variant="ghost"
+          loading={opening}
+          onClick={open}
+          icon={<KeyRound size={16} strokeWidth={1.75} />}
+        >
           {opening ? "打开中…" : "打开 / 登录 BOSS"}
-        </button>
-        <button className="primary" disabled={searching} onClick={search}>
+        </Button>
+        <Button
+          variant="primary"
+          loading={searching}
+          onClick={search}
+          icon={<Download size={16} strokeWidth={1.75} />}
+        >
           {searching ? "抓取中…" : "抓取岗位"}
-        </button>
+        </Button>
         {jobs.length > 0 && (
-          <button onClick={() => setShowBatch(true)}>
+          <Button
+            onClick={() => setShowBatch(true)}
+            icon={<Send size={16} strokeWidth={1.75} />}
+          >
             批量投递({jobs.length})
-          </button>
+          </Button>
         )}
-        <button className="ghost" disabled={refreshing} onClick={refreshReplies}>
+        <Button
+          variant="ghost"
+          loading={refreshing}
+          onClick={refreshReplies}
+          icon={<RefreshCw size={16} strokeWidth={1.75} />}
+        >
           {refreshing ? "刷新中…" : "刷新回复"}
-        </button>
-        <button className="ghost" disabled={syncing} onClick={syncFeishu}>
+        </Button>
+        <Button
+          variant="ghost"
+          loading={syncing}
+          onClick={syncFeishu}
+          icon={<RefreshCw size={16} strokeWidth={1.75} />}
+        >
           {syncing ? "同步中…" : "同步飞书"}
-        </button>
-        <span className="tier-pill">step 3b · 半自动投递</span>
+        </Button>
+        <span className="tier-pill inline-flex items-center gap-1">
+          <ShieldCheck size={13} strokeWidth={1.75} />
+          step 3b · 半自动投递
+        </span>
       </div>
       {err && <div className="err">{err}</div>}
       {syncNote && <div className="hint" style={{ marginTop: 6 }}>{syncNote}</div>}
@@ -226,12 +271,16 @@ export function BossPanel(props: {
             <span className="funnel-num">{appliedIds.size}</span>
             <span className="hint">累计已投</span>
           </div>
-          <div className="funnel-arrow">→</div>
+          <div className="funnel-arrow">
+            <ArrowRight size={18} strokeWidth={1.75} />
+          </div>
           <div className="funnel-cell">
             <span className="funnel-num">{replies.total}</span>
             <span className="hint">已沟通会话</span>
           </div>
-          <div className="funnel-arrow">→</div>
+          <div className="funnel-arrow">
+            <ArrowRight size={18} strokeWidth={1.75} />
+          </div>
           <div className="funnel-cell">
             <span className="funnel-num" style={{ color: "var(--accent-strong)" }}>
               {replies.withReply}
@@ -246,26 +295,42 @@ export function BossPanel(props: {
           {jobs.map((j, i) => (
             <div key={j.id || i} className="job-row">
               <div style={{ minWidth: 0, flex: 1 }}>
-                <div className="job-row-title">{j.title || "(无标题)"}</div>
+                <div className="job-row-title">
+                  {j.title || "(无标题)"}
+                  {j.salary && <span className="job-row-salary">{j.salary}</span>}
+                </div>
                 <div className="hint" style={{ marginTop: 2 }}>
-                  {[j.company, j.salary, j.tags].filter(Boolean).join(" · ")}
+                  {[j.company, j.tags].filter(Boolean).join(" · ")}
                 </div>
               </div>
-              <button
-                className="small ghost"
+              {j.href && (
+                <a
+                  className="inline-flex items-center justify-center rounded border border-border bg-surface px-2 py-1.5 text-text-2 no-underline hover:border-accent hover:text-accent-strong"
+                  href={j.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  title="在浏览器打开原岗位"
+                >
+                  <ExternalLink size={14} strokeWidth={1.75} />
+                </a>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
                 disabled={!!fetching}
                 onClick={() => pick(j)}
                 title="抓 JD 灌进生成器"
               >
                 {fetching === (j.id || j.href) ? "抓取中…" : "用这个"}
-              </button>
-              <button
-                className="small"
+              </Button>
+              <Button
+                size="sm"
                 onClick={() => setApplyJob(j)}
+                icon={<Send size={14} strokeWidth={1.75} />}
                 title="生成招呼语 → 审核 → 投递"
               >
-                {appliedIds.has(j.id || j.href) ? "已投 ·再投" : "投递"}
-              </button>
+                {appliedIds.has(j.id || j.href) ? "再投" : "投递"}
+              </Button>
             </div>
           ))}
         </div>

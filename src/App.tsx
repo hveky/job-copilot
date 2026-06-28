@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MessageSquare, ScrollText, FolderClosed } from "lucide-react";
 import { Header } from "./components/Header";
-import type { WorkflowStep } from "./components/WorkflowRail";
-import { HeroSummaryCard } from "./components/HeroSummaryCard";
+import { AutoApplyFlow, type AutoApplyStep } from "./components/AutoApplyFlow";
+import { LeftNavRail } from "./components/LeftNavRail";
+import { ApplyQuotaCard, RiskControlCard } from "./components/ApplySidebarCards";
 import { BossPanel } from "./components/BossPanel";
 import { ReplyWorkspace } from "./components/ReplyWorkspace";
 import { FilesPanel } from "./components/FilesPanel";
@@ -12,7 +13,7 @@ import { ResumeOnboard } from "./components/ResumeOnboard";
 import { SettingsModal } from "./components/Settings";
 import { ResumeBuilderModal } from "./components/ResumeBuilderModal";
 import { Tabs } from "./ui";
-import { getDaily } from "./lib/ledger";
+import { getDaily, loadRecords } from "./lib/ledger";
 import {
   loadSettings,
   saveSettings,
@@ -66,7 +67,6 @@ export function App() {
   const [sbWidth, setSbWidth] = useState(settings.sidebarWidth);
   const widthRef = useRef(settings.sidebarWidth);
 
-  // 窄屏(<768)：右侧助手默认折叠，展开时以抽屉(overlay)形式出现，主区不被挤压
   useEffect(() => {
     const onResize = () => {
       const isNarrow = window.innerWidth < 768;
@@ -77,18 +77,16 @@ export function App() {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  // 文件优先:固定数据根目录 + 简历从 resumes/ 读取
   const [root, setRoot] = useState("");
   const [resumeText, setResumeText] = useState("");
   const [needResume, setNeedResume] = useState(false);
   const [fileToOpen, setFileToOpen] = useState("");
-  // BOSS 扩展推送岗位时自增,触发收件箱刷新
   const [inboxKey, setInboxKey] = useState(0);
-  // 总览指标
   const [candidates, setCandidates] = useState(0);
   const [metricsKey, setMetricsKey] = useState(0);
 
   const todayApplied = useMemo(() => getDaily(), [metricsKey]);
+  const totalApplied = useMemo(() => loadRecords().length, [metricsKey]);
 
   async function refreshResume(r: string) {
     if (!r) return;
@@ -101,7 +99,6 @@ export function App() {
     }
   }
 
-  // 启动:取固定根目录(桌面),建好的四个文件夹由 Rust 保证存在,然后载入简历
   useEffect(() => {
     if (!isDesktop()) return;
     (async () => {
@@ -118,7 +115,6 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 订阅 BOSS 扩展的入站推送:收到就让收件箱刷新
   useEffect(() => {
     let un: (() => void) | undefined;
     listenJobsReceived(() => setInboxKey((k) => k + 1)).then((fn) => {
@@ -173,7 +169,6 @@ export function App() {
     setShowSettings(false);
   }
 
-  // 内容包生成完毕 → 跳到「文件」面板并打开该文件
   function onGenerated(path: string) {
     setSidebarOpen(true);
     setSbTab("files");
@@ -190,16 +185,18 @@ export function App() {
     }));
   }
 
-  const workflowStep: WorkflowStep = !settings.activeJob
-    ? "filter"
-    : !jd.trim()
-      ? "fetch"
-      : "generate";
+  const autoStep: AutoApplyStep = !settings.activeJob
+    ? "target"
+    : applyStatus.state === "running" || applyStatus.state === "waiting"
+      ? "apply"
+      : candidates > 0
+        ? "score"
+        : "fetch";
 
   return (
     <div className="flex h-screen flex-col bg-bg text-text">
       <Header
-        statusLabel="M1 · 内容生成 + 回复助手"
+        statusLabel="M1 · 内容生成 · 回复助手"
         hasKey={hasKey}
         sidebarOpen={sidebarOpen}
         onOpenResume={() => setShowResume(true)}
@@ -207,61 +204,73 @@ export function App() {
         onToggleSidebar={() => setSidebarOpen((v) => !v)}
       />
 
-      <div className="mx-auto flex w-full min-h-0 flex-1 bg-workbench">
-        <main className="min-w-0 flex-1 overflow-auto px-4 py-4 lg:px-6">
-          <div className="mx-auto grid max-w-[1560px] grid-cols-12 gap-4 xl:gap-5">
-            <div className="col-span-12">
-              <HeroSummaryCard />
+      <div className="flex min-h-0 w-full flex-1 bg-workbench">
+        <LeftNavRail onOpenSettings={() => setShowSettings(true)} />
+
+        <main className="min-w-0 flex-1 overflow-auto px-4 py-4 lg:px-[18px]">
+          <div className="mx-auto grid max-w-none gap-3 xl:gap-4">
+            <AutoApplyFlow current={autoStep} />
+
+            <div className="grid gap-3 xl:grid-cols-[376px_minmax(0,1fr)] 2xl:grid-cols-[376px_minmax(0,1fr)]">
+              <aside className="grid content-start gap-3">
+                <JobPicker
+                  gateway={gateway}
+                  resume={resumeText}
+                  targetJobs={settings.targetJobs}
+                  activeJob={settings.activeJob}
+                  jobHistory={settings.jobHistory}
+                  cities={settings.cities}
+                  city={settings.city}
+                  salary={settings.salary}
+                  onJobsChange={(targetJobs) => patch({ targetJobs })}
+                  onActiveChange={(activeJob) => patch({ activeJob })}
+                  onHistoryChange={(jobHistory) => patch({ jobHistory })}
+                  onCitiesChange={(cities) => patch({ cities })}
+                  onCityChange={(city) => patch({ city })}
+                  onSalaryChange={(salary) => patch({ salary })}
+                />
+                <ApplyQuotaCard
+                  todayApplied={todayApplied}
+                  dailyCap={settings.dailyCap}
+                  totalApplied={totalApplied}
+                />
+                <RiskControlCard
+                  todayApplied={todayApplied}
+                  dailyCap={settings.dailyCap}
+                  delayMin={settings.delayMin}
+                  delayMax={settings.delayMax}
+                />
+              </aside>
+
+              <section className="min-w-0">
+                <BossPanel
+                  gateway={gateway}
+                  job={settings.activeJob}
+                  city={settings.city}
+                  salary={settings.salary}
+                  resume={resumeText}
+                  instruction={settings.instruction}
+                  dailyCap={settings.dailyCap}
+                  delayMin={settings.delayMin}
+                  delayMax={settings.delayMax}
+                  feishuAppId={settings.feishuAppId || BUILTIN_FEISHU.clientId}
+                  feishuAppSecret={settings.feishuAppSecret || BUILTIN_FEISHU.clientSecret}
+                  feishuUserToken={settings.feishuUserToken}
+                  feishuBaseToken={settings.feishuBaseToken}
+                  feishuTableId={settings.feishuTableId}
+                  root={root}
+                  inboxRefreshKey={inboxKey}
+                  contentTier={contentTier}
+                  onContentTierChange={onContentTierChange}
+                  onPickJd={setJd}
+                  onGenerated={onGenerated}
+                  onCandidateCount={setCandidates}
+                  onContentStatus={setContentStatus}
+                  onApplyStatus={setApplyStatus}
+                  onApplied={() => setMetricsKey((k) => k + 1)}
+                />
+              </section>
             </div>
-
-            <section className="col-span-12 xl:col-span-5">
-              <JobPicker
-                gateway={gateway}
-                resume={resumeText}
-                targetJobs={settings.targetJobs}
-                activeJob={settings.activeJob}
-                jobHistory={settings.jobHistory}
-                cities={settings.cities}
-                city={settings.city}
-                salary={settings.salary}
-                onJobsChange={(targetJobs) => patch({ targetJobs })}
-                onActiveChange={(activeJob) => patch({ activeJob })}
-                onHistoryChange={(jobHistory) => patch({ jobHistory })}
-                onCitiesChange={(cities) => patch({ cities })}
-                onCityChange={(city) => patch({ city })}
-                onSalaryChange={(salary) => patch({ salary })}
-              />
-            </section>
-
-            <section className="col-span-12 xl:col-span-7">
-              <BossPanel
-                gateway={gateway}
-                workflowStep={workflowStep}
-                job={settings.activeJob}
-                city={settings.city}
-                salary={settings.salary}
-                resume={resumeText}
-                instruction={settings.instruction}
-                dailyCap={settings.dailyCap}
-                delayMin={settings.delayMin}
-                delayMax={settings.delayMax}
-                feishuAppId={settings.feishuAppId || BUILTIN_FEISHU.clientId}
-                feishuAppSecret={settings.feishuAppSecret || BUILTIN_FEISHU.clientSecret}
-                feishuUserToken={settings.feishuUserToken}
-                feishuBaseToken={settings.feishuBaseToken}
-                feishuTableId={settings.feishuTableId}
-                root={root}
-                inboxRefreshKey={inboxKey}
-                contentTier={contentTier}
-                onContentTierChange={onContentTierChange}
-                onPickJd={setJd}
-                onGenerated={onGenerated}
-                onCandidateCount={setCandidates}
-                onContentStatus={setContentStatus}
-                onApplyStatus={setApplyStatus}
-                onApplied={() => setMetricsKey((k) => k + 1)}
-              />
-            </section>
           </div>
         </main>
 

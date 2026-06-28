@@ -40,6 +40,7 @@ export function ResumeViewerModal(props: { root: string; onClose: () => void }) 
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState("");
   const [err, setErr] = useState("");
+  const [lightbox, setLightbox] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   async function load() {
@@ -66,7 +67,7 @@ export function ResumeViewerModal(props: { root: string; onClose: () => void }) 
           /* 跳过读不出的 */
         }
       }
-      items.sort((a, b) => a.name.localeCompare(b.name, "zh"));
+      items.sort((a, b) => a.name.localeCompare(b.name, "zh", { numeric: true }));
       setPngs(items);
       setDefaultPath(getDefaultResumePng());
     } catch (e) {
@@ -250,13 +251,18 @@ export function ResumeViewerModal(props: { root: string; onClose: () => void }) 
                       (isDefault ? "border-accent bg-accent-soft" : "border-border bg-surface-2")
                     }
                   >
-                    <a href={p.url} target="_blank" rel="noreferrer" title="点击查看大图">
+                    <button
+                      type="button"
+                      className="!border-0 !bg-transparent !p-0"
+                      onClick={() => setLightbox(p.url)}
+                      title="点击查看大图"
+                    >
                       <img
                         src={p.url}
                         alt={p.name}
-                        className="h-40 w-full rounded border border-border bg-white object-contain"
+                        className="h-40 w-full cursor-zoom-in rounded border border-border bg-white object-contain"
                       />
-                    </a>
+                    </button>
                     <div className="flex items-center gap-1">
                       <span className="flex-1 truncate text-aux text-text-2" title={p.name}>
                         {p.name}
@@ -278,6 +284,20 @@ export function ResumeViewerModal(props: { root: string; onClose: () => void }) 
           )}
         </section>
       </div>
+
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-[rgba(15,23,42,0.7)] p-6"
+          onClick={() => setLightbox(null)}
+          title="点击关闭"
+        >
+          <img
+            src={lightbox}
+            alt="简历大图"
+            className="max-h-full max-w-full cursor-zoom-out rounded bg-white object-contain shadow-pop"
+          />
+        </div>
+      )}
     </Modal>
   );
 }

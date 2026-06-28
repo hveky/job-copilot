@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { Settings } from "../state/settings";
 import { feishuOAuth } from "../lib/tauri";
 import { BUILTIN_FEISHU, hasBuiltinFeishu } from "../config/feishu";
+import { normalizeApplySafety } from "../lib/applySafety";
 
 export function SettingsModal(props: {
   initial: Settings;
@@ -85,6 +86,7 @@ export function SettingsModal(props: {
             <span className="hint">单日上限</span>
             <input
               type="number"
+              min={1}
               value={s.dailyCap}
               onChange={(e) => set("dailyCap", Number(e.target.value) || 0)}
             />
@@ -93,6 +95,7 @@ export function SettingsModal(props: {
             <span className="hint">最小间隔(秒)</span>
             <input
               type="number"
+              min={10}
               value={s.delayMin}
               onChange={(e) => set("delayMin", Number(e.target.value) || 0)}
             />
@@ -101,6 +104,7 @@ export function SettingsModal(props: {
             <span className="hint">最大间隔(秒)</span>
             <input
               type="number"
+              min={10}
               value={s.delayMax}
               onChange={(e) => set("delayMax", Number(e.target.value) || 0)}
             />
@@ -171,7 +175,7 @@ export function SettingsModal(props: {
         <label className="field">BOSS 扩展对接(入站推送)</label>
         <p className="hint" style={{ marginTop: 0 }}>
           桌面端在本机 <code>http://127.0.0.1:14530/jobs</code> 接收 BOSS 扩展推送的岗位。
-          在扩展里把令牌填成下面这串(默认即可),收藏后一键推送，岗位会出现在「📥 候选岗位」里。
+          在扩展里把令牌填成下面这串(桌面端自动生成),收藏后一键推送，岗位会出现在「📥 候选岗位」里。
         </p>
         <div className="row" style={{ gap: 12 }}>
           <div style={{ flex: 1 }}>
@@ -179,8 +183,8 @@ export function SettingsModal(props: {
             <input value="14530" readOnly />
           </div>
           <div style={{ flex: 2 }}>
-            <span className="hint">对接令牌(X-Copilot-Token · 与扩展默认一致)</span>
-            <input value={s.bridgeToken} readOnly />
+            <span className="hint">对接令牌(X-Copilot-Token · 桌面端自动生成)</span>
+            <input value={s.bridgeToken || "桌面端启动后自动生成"} readOnly />
           </div>
         </div>
 
@@ -188,7 +192,10 @@ export function SettingsModal(props: {
           <button className="ghost" onClick={props.onClose}>
             取消
           </button>
-          <button className="primary" onClick={() => props.onSave(s)}>
+          <button
+            className="primary"
+            onClick={() => props.onSave({ ...s, ...normalizeApplySafety(s) })}
+          >
             保存
           </button>
         </div>

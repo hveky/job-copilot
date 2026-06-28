@@ -88,6 +88,11 @@ export async function dataRoot(): Promise<string> {
   return invoke<string>("data_root");
 }
 
+export async function bridgeToken(): Promise<string> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<string>("bridge_token");
+}
+
 export async function fsList(root: string): Promise<string[]> {
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<string[]>("fs_list", { root });

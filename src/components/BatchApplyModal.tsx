@@ -9,6 +9,11 @@ import {
   loadApplied,
   type ApplyRecord,
 } from "../lib/ledger";
+import {
+  canApplyToday,
+  normalizeApplySafety,
+  shouldRecordApplyResult,
+} from "../lib/applySafety";
 
 type RowStatus = "pending" | "sending" | "sent" | "failed" | "skipped";
 interface Row {
@@ -60,6 +65,7 @@ export function BatchApplyModal(props: {
   const [note, setNote] = useState("");
   const [countdown, setCountdown] = useState(0);
   const stopRef = useRef(false);
+  const safety = normalizeApplySafety(props);
 
   const set = (i: number, patch: Partial<Row>) =>
     setRows((rs) => rs.map((r, k) => (k === i ? { ...r, ...patch } : r)));
@@ -137,14 +143,14 @@ export function BatchApplyModal(props: {
         set(i, { status: "skipped", error: "无招呼语" });
         continue;
       }
-      if (getDaily() >= props.dailyCap) {
-        setNote(`已达单日上限 ${props.dailyCap} 条,停止。`);
+      if (!canApplyToday(getDaily(), safety.dailyCap)) {
+        setNote(`已达单日上限 ${safety.dailyCap} 条,停止。`);
         break;
       }
       set(i, { status: "sending" });
       try {
         const res = await bossApply(r.job.href, r.greeting.trim());
-        if (res.ok) {
+        if (shouldRecordApplyResult(res)) {
           bumpDaily();
           props.onApplied({
             id: r.job.id || r.job.href,
@@ -174,8 +180,8 @@ export function BatchApplyModal(props: {
         .some((x) => x.include && x.status === "pending");
       if (more && !stopRef.current) {
         const delay =
-          props.delayMin +
-          Math.floor(Math.random() * (props.delayMax - props.delayMin + 1));
+          safety.delayMin +
+          Math.floor(Math.random() * (safety.delayMax - safety.delayMin + 1));
         await countdownSleep(delay);
       }
     }
@@ -230,8 +236,8 @@ export function BatchApplyModal(props: {
         </div>
         <p className="hint" style={{ marginTop: 4 }}>
           岗位「{props.jobLabel}」· 共 {rows.length} 条 · 待投 {includedPending} ·
-          已投 {sentCount} · 今日已投 {getDaily()}/{props.dailyCap} ·
-          间隔 {props.delayMin}-{props.delayMax}s 随机
+          已投 {sentCount} · 今日已投 {getDaily()}/{safety.dailyCap} ·
+          间隔 {safety.delayMin}-{safety.delayMax}s 随机
         </p>
         <div className="row" style={{ gap: 8, marginTop: 6 }}>
           <div className="progress" style={{ flex: 1 }}>

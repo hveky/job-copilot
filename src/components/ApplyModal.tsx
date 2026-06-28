@@ -3,7 +3,8 @@ import { chat, GatewayError } from "../gateway/client";
 import type { GatewayConfig } from "../gateway/types";
 import { greetingSystem, greetingUser } from "../prompts/templates";
 import { bossApply, bossFetchJd, fsReadBytes, type BossJob } from "../lib/tauri";
-import type { ApplyRecord } from "../lib/ledger";
+import { bumpDaily, getDaily, type ApplyRecord } from "../lib/ledger";
+import { canApplyToday, shouldRecordApplyResult } from "../lib/applySafety";
 
 type Phase = "loading" | "review" | "applying" | "done" | "error";
 
@@ -16,6 +17,7 @@ export function ApplyModal(props: {
   resume: string;
   instruction: string;
   root: string;
+  dailyCap: number;
   onClose: () => void;
   onApplied: (rec: ApplyRecord) => void;
 }) {
@@ -79,26 +81,33 @@ export function ApplyModal(props: {
       return;
     }
     setErr("");
+    if (!canApplyToday(getDaily(), props.dailyCap)) {
+      setErr(`已达单日上限 ${props.dailyCap} 条,停止。`);
+      return;
+    }
     setClipNote("");
     setPhase("applying");
     try {
       const r = await bossApply(props.bossJob.href, greeting.trim());
       setOk(r.ok);
       setPhase("done");
-      props.onApplied({
-        id: props.bossJob.id || props.bossJob.href,
-        title: props.bossJob.title,
-        company: props.bossJob.company,
-        city: props.city,
-        salary: props.bossJob.salary,
-        track: props.jobLabel,
-        href: props.bossJob.href,
-        greeting: greeting.trim(),
-        date: Date.now(),
-        synced: false,
-      });
+      if (shouldRecordApplyResult(r)) {
+        bumpDaily();
+        props.onApplied({
+          id: props.bossJob.id || props.bossJob.href,
+          title: props.bossJob.title,
+          company: props.bossJob.company,
+          city: props.city,
+          salary: props.bossJob.salary,
+          track: props.jobLabel,
+          href: props.bossJob.href,
+          greeting: greeting.trim(),
+          date: Date.now(),
+          synced: false,
+        });
+      }
       // Clipboard attach resume image
-      if (attachResume && props.root) {
+      if (shouldRecordApplyResult(r) && attachResume && props.root) {
         try {
           const bytes = await fsReadBytes(props.root, "resumes/resume.png");
           const blob = new Blob([new Uint8Array(bytes)], { type: "image/png" });

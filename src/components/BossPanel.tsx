@@ -23,6 +23,7 @@ import {
 } from "../lib/ledger";
 import { buildFeishuRecords } from "../lib/feishu";
 import type { GatewayConfig } from "../gateway/types";
+import { normalizeApplySafety } from "../lib/applySafety";
 
 // BOSS 投递台(Phase B step1-3b):登录 → 抓 JD → 审核后半自动投递(单条/批量)。
 export function BossPanel(props: {
@@ -54,6 +55,7 @@ export function BossPanel(props: {
   const [replies, setReplies] = useState<BossReplies | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const desktop = isDesktop();
+  const safety = normalizeApplySafety(props);
 
   async function refreshReplies() {
     setErr("");
@@ -181,13 +183,13 @@ export function BossPanel(props: {
         <strong>「{props.city}」</strong>抓取在招岗位,点「用这个」把 JD 灌进生成器。
       </p>
       <div className="metrics">
-        <div className={"metric" + (getDaily() >= props.dailyCap ? " warn" : "")}>
+        <div className={"metric" + (getDaily() >= safety.dailyCap ? " warn" : "")}>
           <span className="metric-num">
             {getDaily()}
-            <span className="metric-cap">/{props.dailyCap}</span>
+            <span className="metric-cap">/{safety.dailyCap}</span>
           </span>
           <span className="metric-label">
-            今日已投{getDaily() >= props.dailyCap ? " · 已达上限" : ""}
+            今日已投{getDaily() >= safety.dailyCap ? " · 已达上限" : ""}
           </span>
         </div>
         <div className="metric">
@@ -278,6 +280,7 @@ export function BossPanel(props: {
           resume={props.resume}
           instruction={props.instruction}
           root={props.root}
+          dailyCap={safety.dailyCap}
           onClose={() => setApplyJob(null)}
           onApplied={handleApplied}
         />
@@ -291,9 +294,9 @@ export function BossPanel(props: {
           city={props.city}
           resume={props.resume}
           instruction={props.instruction}
-          dailyCap={props.dailyCap}
-          delayMin={props.delayMin}
-          delayMax={props.delayMax}
+          dailyCap={safety.dailyCap}
+          delayMin={safety.delayMin}
+          delayMax={safety.delayMax}
           onClose={() => setShowBatch(false)}
           onApplied={handleApplied}
         />

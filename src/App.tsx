@@ -17,6 +17,7 @@ import {
 } from "./state/settings";
 import { BUILTIN_FEISHU } from "./config/feishu";
 import {
+  bridgeToken,
   dataRoot,
   fsWrite,
   isDesktop,
@@ -62,6 +63,8 @@ export function App() {
       try {
         const r = await dataRoot();
         setRoot(r);
+        const token = await bridgeToken();
+        patch({ bridgeToken: token });
         await refreshResume(r);
       } catch {
         /* ignore */

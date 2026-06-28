@@ -1,12 +1,15 @@
-use std::path::PathBuf;
+use std::io::Read;
+use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{Emitter, Listener, Manager};
 
-/// 与 BOSS 扩展约定的共享令牌(请求头 X-Copilot-Token)。两端需一致。
-const BRIDGE_TOKEN: &str = "job-copilot-local";
+/// 与 BOSS 扩展约定的共享令牌文件名(请求头 X-Copilot-Token)。
+const BRIDGE_TOKEN_FILE: &str = ".bridge-token";
 /// 桥接服务监听端口(只绑回环地址,不暴露局域网)。
 const BRIDGE_ADDR: &str = "127.0.0.1:14530";
+const BRIDGE_MAX_BODY_BYTES: u64 = 512 * 1024;
+const BRIDGE_MAX_JOBS: usize = 50;
 
 // 抓取列表:在 BOSS 搜索页注入,等卡片+__TAURI__ 就绪后用 IPC 事件回传。
 // 优先走 BOSS 官方搜索接口(salaryDesc 是明文,绕开列表卡片的字体加密薪资);
@@ -274,17 +277,53 @@ async fn boss_replies(app: tauri::AppHandle) -> Result<String, String> {
 
 // ===== 文件 agent:本地求职工作区读写(路径安全) =====
 fn safe_join(root: &str, rel: &str) -> Result<PathBuf, String> {
-    if rel.contains("..") {
-        return Err("路径不能包含 ..".into());
-    }
-    let root_p = PathBuf::from(root);
+    let root_p = PathBuf::from(root)
+        .canonicalize()
+        .map_err(|_| "工作区目录无效".to_string())?;
     if !root_p.is_dir() {
         return Err("工作区目录无效".into());
     }
-    let rel = rel.trim_start_matches(['/', '\\']);
-    Ok(root_p.join(rel))
-}
 
+    let rel_p = Path::new(rel);
+    if rel_p.is_absolute() {
+        return Err("路径必须是工作区内的相对路径".into());
+    }
+
+    let mut clean = PathBuf::new();
+    for component in rel_p.components() {
+        match component {
+            Component::Normal(part) => clean.push(part),
+            Component::CurDir => {}
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                return Err("路径不能跳出工作区".into());
+            }
+        }
+    }
+    if clean.as_os_str().is_empty() {
+        return Err("路径不能为空".into());
+    }
+
+    let target = root_p.join(clean);
+    if let Some(parent) = target.parent() {
+        if parent.exists() {
+            let parent_canon = parent
+                .canonicalize()
+                .map_err(|e| format!("路径校验失败: {}", e))?;
+            if !parent_canon.starts_with(&root_p) {
+                return Err("路径不能跳出工作区".into());
+            }
+        }
+    }
+    if target.exists() {
+        let target_canon = target
+            .canonicalize()
+            .map_err(|e| format!("路径校验失败: {}", e))?;
+        if !target_canon.starts_with(&root_p) {
+            return Err("路径不能跳出工作区".into());
+        }
+    }
+    Ok(target)
+}
 /// 列出工作区下的文本文件(相对路径),跳过重目录。
 #[tauri::command]
 fn fs_list(root: String) -> Result<Vec<String>, String> {
@@ -335,6 +374,7 @@ fn data_root(app: tauri::AppHandle) -> Result<String, String> {
     for sub in ["preps", "talk", "jds", "resumes"] {
         std::fs::create_dir_all(root.join(sub)).map_err(|e| e.to_string())?;
     }
+    let _ = ensure_bridge_token(&root)?;
     Ok(root.to_string_lossy().to_string())
 }
 
@@ -612,6 +652,80 @@ fn write_inbox_job(root: &PathBuf, job: &serde_json::Value) -> Result<String, St
     Ok(rel)
 }
 
+fn fnv64(s: &str) -> u64 {
+    let mut h: u64 = 1469598103934665603;
+    for b in s.bytes() {
+        h ^= b as u64;
+        h = h.wrapping_mul(1099511628211);
+    }
+    h
+}
+
+fn make_bridge_token(root: &Path) -> String {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or_default();
+    let seed = format!("{}:{}:{}", root.display(), std::process::id(), nanos);
+    format!("qzc-{:x}-{:x}", nanos, fnv64(&seed))
+}
+
+fn ensure_bridge_token(root: &Path) -> Result<String, String> {
+    std::fs::create_dir_all(root).map_err(|e| e.to_string())?;
+    let p = root.join(BRIDGE_TOKEN_FILE);
+    if let Ok(token) = std::fs::read_to_string(&p) {
+        let token = token.trim().to_string();
+        if !token.is_empty() {
+            return Ok(token);
+        }
+    }
+    let token = make_bridge_token(root);
+    std::fs::write(&p, &token).map_err(|e| e.to_string())?;
+    Ok(token)
+}
+
+#[tauri::command]
+fn bridge_token(app: tauri::AppHandle) -> Result<String, String> {
+    let home = app
+        .path()
+        .home_dir()
+        .map_err(|e| format!("找不到用户主目录: {}", e))?;
+    ensure_bridge_token(&home.join("job-copilot"))
+}
+
+fn bridge_origin_allowed(origin: &str) -> bool {
+    origin == "null"
+        || origin.starts_with("tauri://")
+        || origin.starts_with("http://localhost:")
+        || origin.starts_with("http://127.0.0.1:")
+        || origin == "https://www.zhipin.com"
+        || origin.ends_with(".zhipin.com")
+        || origin.starts_with("chrome-extension://")
+        || origin.starts_with("moz-extension://")
+}
+
+fn request_origin(request: &tiny_http::Request) -> Option<String> {
+    request
+        .headers()
+        .iter()
+        .find(|h| h.field.equiv("Origin"))
+        .map(|h| h.value.as_str().to_string())
+}
+
+fn request_token_ok(request: &tiny_http::Request, token: &str) -> bool {
+    request
+        .headers()
+        .iter()
+        .any(|h| h.field.equiv("X-Copilot-Token") && h.value.as_str() == token)
+}
+
+fn request_content_length(request: &tiny_http::Request) -> Option<u64> {
+    request
+        .headers()
+        .iter()
+        .find(|h| h.field.equiv("Content-Length"))
+        .and_then(|h| h.value.as_str().parse::<u64>().ok())
+}
 /// 启动本地桥接 HTTP 服务(独立线程):接收 BOSS 扩展推送的岗位,落到 jds/,并 emit 通知前端刷新。
 /// 失败(如端口被占用)仅告警,不阻塞主程序——收件箱退化为手动粘贴 JD,原流程不受影响。
 fn start_bridge_server(app: tauri::AppHandle) {
@@ -629,10 +743,24 @@ fn start_bridge_server(app: tauri::AppHandle) {
             Ok(h) => h.join("job-copilot"),
             Err(_) => return,
         };
+        let bridge_token = match ensure_bridge_token(&root) {
+            Ok(t) => t,
+            Err(e) => {
+                log::warn!("桥接令牌初始化失败,已跳过: {}", e);
+                return;
+            }
+        };
 
-        let cors = |mut resp: tiny_http::Response<std::io::Cursor<Vec<u8>>>| {
+        let add_cors = |mut resp: tiny_http::Response<std::io::Cursor<Vec<u8>>>, origin: Option<&str>| {
+            if let Some(origin) = origin.filter(|o| bridge_origin_allowed(o)) {
+                if let Ok(h) = tiny_http::Header::from_bytes(
+                    &b"Access-Control-Allow-Origin"[..],
+                    origin.as_bytes(),
+                ) {
+                    resp.add_header(h);
+                }
+            }
             for (k, v) in [
-                ("Access-Control-Allow-Origin", "*"),
                 ("Access-Control-Allow-Headers", "content-type, x-copilot-token"),
                 ("Access-Control-Allow-Methods", "POST, OPTIONS"),
             ] {
@@ -652,32 +780,77 @@ fn start_bridge_server(app: tauri::AppHandle) {
         };
 
         for mut request in server.incoming_requests() {
+            let origin = request_origin(&request);
+            let origin_allowed = origin
+                .as_deref()
+                .map(bridge_origin_allowed)
+                .unwrap_or(true);
+
             if request.method() == &tiny_http::Method::Options {
-                let _ = request
-                    .respond(cors(tiny_http::Response::from_string("").with_status_code(204)));
+                let status = if origin_allowed { 204 } else { 403 };
+                let _ = request.respond(add_cors(
+                    tiny_http::Response::from_string("").with_status_code(status),
+                    origin.as_deref(),
+                ));
+                continue;
+            }
+            if !origin_allowed {
+                let _ = request.respond(add_cors(
+                    json_resp(403, r#"{"ok":false,"error":"origin"}"#),
+                    origin.as_deref(),
+                ));
                 continue;
             }
             if request.method() != &tiny_http::Method::Post {
-                let _ = request.respond(cors(json_resp(405, "{\"ok\":false,\"error\":\"method\"}")));
+                let _ = request.respond(add_cors(
+                    json_resp(405, r#"{"ok":false,"error":"method"}"#),
+                    origin.as_deref(),
+                ));
                 continue;
             }
-            let token_ok = request
-                .headers()
-                .iter()
-                .any(|h| h.field.equiv("X-Copilot-Token") && h.value.as_str() == BRIDGE_TOKEN);
-            if !token_ok {
-                let _ = request.respond(cors(json_resp(401, "{\"ok\":false,\"error\":\"token\"}")));
+            if !request_token_ok(&request, &bridge_token) {
+                let _ = request.respond(add_cors(
+                    json_resp(401, r#"{"ok":false,"error":"token"}"#),
+                    origin.as_deref(),
+                ));
+                continue;
+            }
+            if request_content_length(&request)
+                .map(|n| n > BRIDGE_MAX_BODY_BYTES)
+                .unwrap_or(false)
+            {
+                let _ = request.respond(add_cors(
+                    json_resp(413, r#"{"ok":false,"error":"too_large"}"#),
+                    origin.as_deref(),
+                ));
                 continue;
             }
             let mut body = String::new();
-            if request.as_reader().read_to_string(&mut body).is_err() {
-                let _ = request.respond(cors(json_resp(400, "{\"ok\":false,\"error\":\"body\"}")));
+            let read_res = request
+                .as_reader()
+                .take(BRIDGE_MAX_BODY_BYTES + 1)
+                .read_to_string(&mut body);
+            if read_res.is_err() {
+                let _ = request.respond(add_cors(
+                    json_resp(400, r#"{"ok":false,"error":"body"}"#),
+                    origin.as_deref(),
+                ));
+                continue;
+            }
+            if body.len() as u64 > BRIDGE_MAX_BODY_BYTES {
+                let _ = request.respond(add_cors(
+                    json_resp(413, r#"{"ok":false,"error":"too_large"}"#),
+                    origin.as_deref(),
+                ));
                 continue;
             }
             let parsed: serde_json::Value = match serde_json::from_str(&body) {
                 Ok(v) => v,
                 Err(_) => {
-                    let _ = request.respond(cors(json_resp(400, "{\"ok\":false,\"error\":\"json\"}")));
+                    let _ = request.respond(add_cors(
+                        json_resp(400, r#"{"ok":false,"error":"json"}"#),
+                        origin.as_deref(),
+                    ));
                     continue;
                 }
             };
@@ -686,6 +859,13 @@ fn start_bridge_server(app: tauri::AppHandle) {
                 .and_then(|v| v.as_array())
                 .cloned()
                 .unwrap_or_default();
+            if jobs.len() > BRIDGE_MAX_JOBS {
+                let _ = request.respond(add_cors(
+                    json_resp(413, r#"{"ok":false,"error":"too_many_jobs"}"#),
+                    origin.as_deref(),
+                ));
+                continue;
+            }
             let mut written = 0;
             for job in &jobs {
                 match write_inbox_job(&root, job) {
@@ -694,10 +874,10 @@ fn start_bridge_server(app: tauri::AppHandle) {
                 }
             }
             let _ = app.emit("jobs-received", written);
-            let _ = request.respond(cors(json_resp(
-                200,
-                &format!("{{\"ok\":true,\"written\":{}}}", written),
-            )));
+            let _ = request.respond(add_cors(
+                json_resp(200, &format!(r#"{{"ok":true,"written":{}}}"#, written)),
+                origin.as_deref(),
+            ));
         }
     });
 }
@@ -730,6 +910,7 @@ pub fn run() {
             fs_write_bytes,
             fs_read_bytes,
             data_root,
+            bridge_token,
             feishu_sync,
             feishu_oauth
         ])

@@ -381,8 +381,11 @@ export function FilesPanel(props: {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: 0, flex: 1 }}>
-      <div className="files-head">
-        <span className="spacer" style={{ flex: 1 }} />
+      <div className="files-head bg-surface-3">
+        <div className="min-w-0 flex-1">
+          <div className="text-[13px] font-semibold text-text">文件工作区</div>
+          <div className="truncate text-aux text-text-2">简历、JD、内容包和话术文件统一在这里查看与修改</div>
+        </div>
         <Button
           variant="ghost"
           size="sm"
@@ -530,7 +533,7 @@ export function FilesPanel(props: {
             </div>
           )}
 
-          <div className="composer">
+          <div className="composer !gap-2">
             <textarea
               rows={2}
               value={input}
@@ -545,6 +548,7 @@ export function FilesPanel(props: {
               }}
             />
             <Button
+              className="self-start px-5"
               variant="primary"
               loading={running}
               onClick={runAgent}

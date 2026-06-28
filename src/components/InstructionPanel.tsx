@@ -65,14 +65,18 @@ export function InstructionPanel(props: {
   }
 
   return (
-    <div
-      className="composer"
-      style={{ flex: 1, borderTop: 0, gap: 10, minHeight: 0 }}
-    >
-      <div className="row">
-        <span className="hint" style={{ flex: 1 }}>
-          主控指令(相当于 CLAUDE.md)— 注入<strong>每一次</strong>生成与回复
-        </span>
+    <div className="flex min-h-0 flex-1 flex-col bg-surface">
+      <div className="border-b border-border bg-surface-3 px-4 py-3">
+        <div className="flex items-center gap-2 text-[13px] font-semibold text-text">
+          <Sparkles size={16} strokeWidth={1.75} className="text-accent-strong" />
+          主控指令
+        </div>
+        <p className="mt-1 mb-0 text-aux text-text-2">
+          作为常驻偏好注入每一次生成与回复，适合约束语气、量化方式和禁用表述。
+        </p>
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
+        <div className="row border-t border-border pt-3">
         <Button
           variant="ghost"
           size="sm"
@@ -90,7 +94,8 @@ export function InstructionPanel(props: {
       </div>
 
       {/* AI 帮写:一句话诉求 → 展开成主控指令 */}
-      <div className="row" style={{ gap: 6 }}>
+      <div className="rounded border border-border bg-surface-3 p-3">
+        <div className="row" style={{ gap: 6 }}>
         <input
           style={{ flex: 1 }}
           value={ask}
@@ -124,11 +129,12 @@ export function InstructionPanel(props: {
             AI 帮写
           </Button>
         )}
+        </div>
       </div>
-      {busy && <div className="hint">✍️ 生成中…(会覆盖下方编辑框,生成后记得点保存)</div>}
+      {busy && <div className="hint">生成中...(会覆盖下方编辑框,生成后记得点保存)</div>}
       {err && <div className="err">{err}</div>}
 
-      <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
+      <div className="min-h-0 flex-1 overflow-auto rounded border border-border bg-surface p-3">
         <MarkdownView
           value={draft}
           editing={editing}
@@ -137,7 +143,7 @@ export function InstructionPanel(props: {
         />
       </div>
 
-      <div className="row">
+      <div className="row border-t border-border pt-3">
         <Button
           variant="primary"
           disabled={!dirty}
@@ -147,6 +153,7 @@ export function InstructionPanel(props: {
           {saved ? "已保存" : dirty ? "保存" : "已保存"}
         </Button>
         {dirty && <span className="hint">有未保存改动</span>}
+      </div>
       </div>
     </div>
   );

@@ -107,7 +107,7 @@ export function SettingsModal(props: {
 
   // 健康状态 pills
   const health = (
-    <div className="flex flex-wrap gap-2 px-6 py-3 bg-surface-2 border-b border-border">
+    <div className="flex flex-wrap gap-2 px-5 py-2.5 bg-surface-2 border-b border-border">
       <StatusPill
         tone={s.dsKey ? "ok" : "warn"}
         icon={
@@ -129,6 +129,15 @@ export function SettingsModal(props: {
       <StatusPill tone="ok">本地存储正常</StatusPill>
     </div>
   );
+
+
+  const sectionMeta: Record<Section, { title: string; desc: string }> = {
+    model: { title: "模型配置", desc: "管理 DeepSeek 连接、轻活模型和深度模型。" },
+    feishu: { title: "飞书同步", desc: "授权账号并配置多维表格写入目标。" },
+    boss: { title: "BOSS 扩展接入", desc: "查看本机接收地址和扩展对接令牌。" },
+    safety: { title: "投递安全", desc: "控制单日上限与自动化间隔，降低风控风险。" },
+    storage: { title: "本地存储", desc: "查看设置、文件和密钥的本地保存策略。" },
+  };
 
   const footer = (
     <>
@@ -156,7 +165,7 @@ export function SettingsModal(props: {
     >
       <div className="flex min-h-[420px]">
         {/* SectionNav */}
-        <div className="w-44 shrink-0 border-r border-border p-3">
+        <div className="w-40 shrink-0 border-r border-border bg-surface-3 p-3">
           <Tabs
             items={SECTIONS}
             active={section}
@@ -166,7 +175,18 @@ export function SettingsModal(props: {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-auto p-6">
+        <div className="flex-1 overflow-auto p-5">
+          <div className="mb-4 flex items-start justify-between gap-4">
+            <div>
+              <h3 className="m-0 text-module text-text">{sectionMeta[section].title}</h3>
+              <p className="mt-1 mb-0 text-aux text-text-2">{sectionMeta[section].desc}</p>
+            </div>
+            <StatusPill tone={section === "safety" && intervalWarn ? "warn" : "ok"}>
+              {section === "safety" && intervalWarn ? "需检查" : "配置可用"}
+            </StatusPill>
+          </div>
+          <div className="grid gap-5 xl:grid-cols-[minmax(0,720px)_230px]">
+            <div className="min-w-0">
           {section === "model" && (
             <div className="flex flex-col gap-4 max-w-[640px]">
               <Field
@@ -361,6 +381,23 @@ export function SettingsModal(props: {
               </div>
             </div>
           )}
+            </div>
+            <aside className="rounded border border-border bg-surface-3 p-3 text-aux text-text-2">
+              <div className="mb-2 text-[12px] font-semibold text-text">配置摘要</div>
+              <div className="grid gap-2">
+                <div className="flex justify-between gap-3"><span>DeepSeek</span><strong className="text-text">{s.dsKey ? "已配置" : "未配置"}</strong></div>
+                <div className="flex justify-between gap-3"><span>飞书</span><strong className="text-text">{s.feishuUserToken ? "已授权" : "未授权"}</strong></div>
+                <div className="flex justify-between gap-3"><span>扩展令牌</span><strong className="text-text">{s.bridgeToken ? "已生成" : "待生成"}</strong></div>
+                <div className="flex justify-between gap-3"><span>单日上限</span><strong className="text-text">{s.dailyCap} 条</strong></div>
+                <div className="flex justify-between gap-3"><span>投递间隔</span><strong className="text-text">{s.delayMin}-{s.delayMax}s</strong></div>
+              </div>
+              {intervalWarn && (
+                <div className="mt-3 rounded border border-[color-mix(in_srgb,var(--warn)_35%,transparent)] bg-[color-mix(in_srgb,var(--warn)_10%,white)] p-2 text-[12px] leading-[18px] text-text">
+                  {intervalWarn}
+                </div>
+              )}
+            </aside>
+          </div>
         </div>
       </div>
     </Modal>

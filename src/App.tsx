@@ -1,20 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MessageSquare, ScrollText, FolderClosed } from "lucide-react";
 import { Header } from "./components/Header";
-import { WorkflowRail, type WorkflowStep } from "./components/WorkflowRail";
+import type { WorkflowStep } from "./components/WorkflowRail";
 import { HeroSummaryCard } from "./components/HeroSummaryCard";
 import { BossPanel } from "./components/BossPanel";
-import { ContentPanel } from "./components/ContentPanel";
-import { Copilot } from "./components/Copilot";
+import { ReplyWorkspace } from "./components/ReplyWorkspace";
 import { FilesPanel } from "./components/FilesPanel";
 import { InstructionPanel } from "./components/InstructionPanel";
-import { JobInbox } from "./components/JobInbox";
 import { JobPicker } from "./components/JobPicker";
 import { ResumeOnboard } from "./components/ResumeOnboard";
 import { SettingsModal } from "./components/Settings";
 import { ResumeBuilderModal } from "./components/ResumeBuilderModal";
 import { Tabs } from "./ui";
-import { getDaily, loadApplied } from "./lib/ledger";
+import { getDaily } from "./lib/ledger";
 import {
   loadSettings,
   saveSettings,
@@ -31,6 +29,8 @@ import {
   readResume,
 } from "./lib/tauri";
 import { sidebar as SB } from "./design/tokens";
+import { TaskStatusBar, type ApplyTaskStatus, type ContentTaskStatus } from "./components/TaskStatusBar";
+import type { Tier } from "./gateway/types";
 
 type SbTab = "copilot" | "instruction" | "files";
 
@@ -45,6 +45,17 @@ export function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showResume, setShowResume] = useState(false);
   const [jd, setJd] = useState("");
+  const [contentTier, setContentTier] = useState<Tier>("deep");
+  const [contentStatus, setContentStatus] = useState<ContentTaskStatus>({
+    state: "idle",
+    tier: "deep",
+    model: settings.modelPro,
+  });
+  const [applyStatus, setApplyStatus] = useState<ApplyTaskStatus>({
+    state: "idle",
+    done: 0,
+    total: 0,
+  });
   const [sbTab, setSbTab] = useState<SbTab>("copilot");
   const [sidebarOpen, setSidebarOpen] = useState(
     () => typeof window === "undefined" || window.innerWidth >= 768,
@@ -78,7 +89,6 @@ export function App() {
   const [metricsKey, setMetricsKey] = useState(0);
 
   const todayApplied = useMemo(() => getDaily(), [metricsKey]);
-  const totalApplied = useMemo(() => loadApplied().size, [metricsKey, inboxKey]);
 
   async function refreshResume(r: string) {
     if (!r) return;
@@ -168,6 +178,16 @@ export function App() {
     setSidebarOpen(true);
     setSbTab("files");
     setFileToOpen(path);
+    setContentStatus({ state: "done", tier: contentTier, model: contentTier === "deep" ? settings.modelPro : settings.modelFlash, path });
+  }
+
+  function onContentTierChange(tier: Tier) {
+    setContentTier(tier);
+    setContentStatus((cur) => ({
+      ...cur,
+      tier,
+      model: tier === "deep" ? settings.modelPro : settings.modelFlash,
+    }));
   }
 
   const workflowStep: WorkflowStep = !settings.activeJob
@@ -187,71 +207,62 @@ export function App() {
         onToggleSidebar={() => setSidebarOpen((v) => !v)}
       />
 
-      <div className="mx-auto flex w-full max-w-shell min-h-0 flex-1">
-        <main className="min-w-0 flex-1 overflow-auto px-6 py-5">
-          <HeroSummaryCard
-            activeJob={settings.activeJob}
-            city={settings.city}
-            salary={settings.salary}
-            todayApplied={todayApplied}
-            totalApplied={totalApplied}
-            candidates={candidates}
-          />
-          <WorkflowRail current={workflowStep} />
+      <div className="mx-auto flex w-full min-h-0 flex-1 bg-workbench">
+        <main className="min-w-0 flex-1 overflow-auto px-4 py-4 lg:px-6">
+          <div className="mx-auto grid max-w-[1560px] grid-cols-12 gap-4 xl:gap-5">
+            <div className="col-span-12">
+              <HeroSummaryCard />
+            </div>
 
-          <JobPicker
-            gateway={gateway}
-            resume={resumeText}
-            targetJobs={settings.targetJobs}
-            activeJob={settings.activeJob}
-            jobHistory={settings.jobHistory}
-            cities={settings.cities}
-            city={settings.city}
-            salary={settings.salary}
-            onJobsChange={(targetJobs) => patch({ targetJobs })}
-            onActiveChange={(activeJob) => patch({ activeJob })}
-            onHistoryChange={(jobHistory) => patch({ jobHistory })}
-            onCitiesChange={(cities) => patch({ cities })}
-            onCityChange={(city) => patch({ city })}
-            onSalaryChange={(salary) => patch({ salary })}
-          />
-          <BossPanel
-            gateway={gateway}
-            job={settings.activeJob}
-            city={settings.city}
-            salary={settings.salary}
-            resume={resumeText}
-            instruction={settings.instruction}
-            dailyCap={settings.dailyCap}
-            delayMin={settings.delayMin}
-            delayMax={settings.delayMax}
-            feishuAppId={settings.feishuAppId || BUILTIN_FEISHU.clientId}
-            feishuAppSecret={settings.feishuAppSecret || BUILTIN_FEISHU.clientSecret}
-            feishuUserToken={settings.feishuUserToken}
-            feishuBaseToken={settings.feishuBaseToken}
-            feishuTableId={settings.feishuTableId}
-            root={root}
-            onPickJd={setJd}
-            onApplied={() => setMetricsKey((k) => k + 1)}
-          />
-          <JobInbox
-            root={root}
-            refreshKey={inboxKey}
-            onUseJd={setJd}
-            onUseJob={(t) => patch({ activeJob: t })}
-            onCount={setCandidates}
-          />
-          <ContentPanel
-            gateway={gateway}
-            job={settings.activeJob}
-            city={settings.city}
-            jd={jd}
-            onJdChange={setJd}
-            resume={resumeText}
-            instruction={settings.instruction}
-            root={root}
-            onGenerated={onGenerated}
-          />
+            <section className="col-span-12 xl:col-span-5">
+              <JobPicker
+                gateway={gateway}
+                resume={resumeText}
+                targetJobs={settings.targetJobs}
+                activeJob={settings.activeJob}
+                jobHistory={settings.jobHistory}
+                cities={settings.cities}
+                city={settings.city}
+                salary={settings.salary}
+                onJobsChange={(targetJobs) => patch({ targetJobs })}
+                onActiveChange={(activeJob) => patch({ activeJob })}
+                onHistoryChange={(jobHistory) => patch({ jobHistory })}
+                onCitiesChange={(cities) => patch({ cities })}
+                onCityChange={(city) => patch({ city })}
+                onSalaryChange={(salary) => patch({ salary })}
+              />
+            </section>
+
+            <section className="col-span-12 xl:col-span-7">
+              <BossPanel
+                gateway={gateway}
+                workflowStep={workflowStep}
+                job={settings.activeJob}
+                city={settings.city}
+                salary={settings.salary}
+                resume={resumeText}
+                instruction={settings.instruction}
+                dailyCap={settings.dailyCap}
+                delayMin={settings.delayMin}
+                delayMax={settings.delayMax}
+                feishuAppId={settings.feishuAppId || BUILTIN_FEISHU.clientId}
+                feishuAppSecret={settings.feishuAppSecret || BUILTIN_FEISHU.clientSecret}
+                feishuUserToken={settings.feishuUserToken}
+                feishuBaseToken={settings.feishuBaseToken}
+                feishuTableId={settings.feishuTableId}
+                root={root}
+                inboxRefreshKey={inboxKey}
+                contentTier={contentTier}
+                onContentTierChange={onContentTierChange}
+                onPickJd={setJd}
+                onGenerated={onGenerated}
+                onCandidateCount={setCandidates}
+                onContentStatus={setContentStatus}
+                onApplyStatus={setApplyStatus}
+                onApplied={() => setMetricsKey((k) => k + 1)}
+              />
+            </section>
+          </div>
         </main>
 
         {sidebarOpen && !narrow && (
@@ -284,7 +295,7 @@ export function App() {
               variant="underline"
             />
             {sbTab === "copilot" && (
-              <Copilot
+              <ReplyWorkspace
                 gateway={gateway}
                 job={settings.activeJob}
                 jd={jd}
@@ -313,6 +324,18 @@ export function App() {
           </aside>
         )}
       </div>
+
+      <TaskStatusBar
+        todayApplied={todayApplied}
+        dailyCap={settings.dailyCap}
+        candidates={candidates}
+        content={{
+          ...contentStatus,
+          tier: contentTier,
+          model: contentTier === "deep" ? settings.modelPro : settings.modelFlash,
+        }}
+        apply={applyStatus}
+      />
 
       {needResume && root && (
         <ResumeOnboard

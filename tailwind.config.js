@@ -7,6 +7,7 @@ export default {
     extend: {
       colors: {
         bg: "var(--bg)",
+        workbench: "var(--workbench)",
         surface: "var(--surface)",
         "surface-2": "var(--surface-2)",
         "surface-3": "var(--surface-3)",
@@ -33,7 +34,7 @@ export default {
         lg: "16px",
       },
       boxShadow: {
-        card: "0 8px 24px rgba(15, 23, 42, 0.06)",
+        card: "0 6px 18px rgba(15, 23, 42, 0.045)",
         pop: "0 18px 48px rgba(15, 23, 42, 0.14)",
         topbar: "0 1px 0 rgba(15, 23, 42, 0.08)",
       },

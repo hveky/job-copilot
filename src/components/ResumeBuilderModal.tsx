@@ -5,7 +5,7 @@ import { chat } from "../gateway/client";
 import type { GatewayConfig } from "../gateway/types";
 import { resumeExtractSystem } from "../prompts/templates";
 import { EMPTY_RESUME, loadResumeJson, saveResumeJson, type Resume } from "../state/resume";
-import { fsWriteBytes } from "../lib/tauri";
+import { fsWrite, fsWriteBytes } from "../lib/tauri";
 import { ResumeDocument } from "./ResumeDocument";
 
 function deepMerge(base: Resume, incoming: Partial<Resume>): Resume {
@@ -42,8 +42,10 @@ export function ResumeBuilderModal(props: {
   root: string;
   resumeText: string;
   onClose: () => void;
+  onRawSaved?: () => void;
 }) {
   const [resume, setResume] = useState<Resume>(EMPTY_RESUME);
+  const [rawText, setRawText] = useState(props.resumeText);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [note, setNote] = useState("");
@@ -60,9 +62,26 @@ export function ResumeBuilderModal(props: {
     setResume((r) => ({ ...r, basics: { ...r.basics, [k]: v } }));
   }
 
+  async function saveRaw() {
+    setErr("");
+    setNote("");
+    if (!rawText.trim()) {
+      setErr("请先粘贴简历文本。");
+      return;
+    }
+    try {
+      await fsWrite(props.root, "resumes/resume.md", rawText);
+      setNote("原文已保存到 resumes/resume.md。");
+      props.onRawSaved?.();
+    } catch (e) {
+      setErr("保存原文失败：" + String(e));
+    }
+  }
+
   async function aiExtract() {
-    if (!props.resumeText.trim()) {
-      setErr("请先在「resumes/」文件夹填入简历文本。");
+    const source = (rawText.trim() ? rawText : props.resumeText).trim();
+    if (!source) {
+      setErr("请先在上方粘贴简历文本。");
       return;
     }
     setErr("");
@@ -73,7 +92,7 @@ export function ResumeBuilderModal(props: {
       await chat(props.gateway, {
         tier: "light",
         system: resumeExtractSystem(),
-        messages: [{ role: "user", content: props.resumeText }],
+        messages: [{ role: "user", content: source }],
         maxTokens: 2000,
         onDelta: (t) => { raw += t; },
       });
@@ -245,6 +264,23 @@ export function ResumeBuilderModal(props: {
         <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
           {/* Left: Form */}
           <div style={{ flex: "0 0 380px", overflowY: "auto", padding: "16px 20px", borderRight: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 14 }}>
+            <section>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                <span className="field" style={{ fontWeight: 600 }}>原始简历文本</span>
+                <button className="small ghost" onClick={saveRaw}>保存原文</button>
+              </div>
+              <p className="hint" style={{ margin: "0 0 6px" }}>
+                粘贴简历全文或要点，点「保存原文」存到 resumes/resume.md，再用「AI 从简历抽取预填」自动填充下方表单。
+              </p>
+              <textarea
+                rows={4}
+                value={rawText}
+                placeholder="粘贴简历正文或核心要点……"
+                onChange={(e) => setRawText(e.target.value)}
+                style={{ width: "100%" }}
+              />
+            </section>
+
             <section>
               <div className="field" style={{ fontWeight: 600, marginBottom: 6 }}>基本信息</div>
               {(["name", "headline", "phone", "email", "location"] as const).map((k) => (

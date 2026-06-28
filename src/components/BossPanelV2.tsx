@@ -8,7 +8,6 @@ import {
   FileText,
   Sparkles,
   ChevronDown,
-  SlidersHorizontal,
   Search,
   TriangleAlert,
   BrainCircuit,
@@ -553,7 +552,6 @@ export function BossPanelV2(props: {
           <Button variant="secondary" size="sm" loading={searching || scoringCount > 0} onClick={search} icon={<RefreshCw size={14} strokeWidth={1.75} />}>
             刷新岗位
           </Button>
-          <button type="button" title="筛选" className="icon-btn ghost h-9 w-9"><SlidersHorizontal size={17} strokeWidth={1.75} /></button>
         </div>
       </header>
 

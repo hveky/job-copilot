@@ -8,7 +8,6 @@ import { BossPanelV2 } from "./components/BossPanelV2";
 import { ReplyWorkspace } from "./components/ReplyWorkspace";
 import { FilesPanel } from "./components/FilesPanel";
 import { JobPicker } from "./components/JobPicker";
-import { ResumeOnboard } from "./components/ResumeOnboard";
 import { SettingsModal } from "./components/Settings";
 import { ResumeBuilderModal } from "./components/ResumeBuilderModal";
 import { ProfilePage } from "./components/ProfilePage";
@@ -25,7 +24,6 @@ import { BUILTIN_FEISHU } from "./config/feishu";
 import {
   bridgeToken,
   dataRoot,
-  fsWrite,
   isDesktop,
   listenJobsReceived,
   readResume,
@@ -88,7 +86,6 @@ export function App() {
 
   const [root, setRoot] = useState("");
   const [resumeText, setResumeText] = useState("");
-  const [needResume, setNeedResume] = useState(false);
   const [fileToOpen, setFileToOpen] = useState("");
   const [inboxKey, setInboxKey] = useState(0);
   const [candidates, setCandidates] = useState(0);
@@ -97,14 +94,14 @@ export function App() {
   const todayApplied = useMemo(() => getDaily(), [metricsKey]);
   const totalApplied = useMemo(() => loadRecords().length, [metricsKey]);
 
-  async function refreshResume(r: string) {
-    if (!r) return;
+  async function refreshResume(r: string): Promise<number> {
+    if (!r) return 0;
     try {
       const { text, count } = await readResume(r);
       setResumeText(text);
-      if (count === 0) setNeedResume(true);
+      return count;
     } catch {
-      /* ignore */
+      return 0;
     }
   }
 
@@ -116,7 +113,8 @@ export function App() {
         setRoot(r);
         const token = await bridgeToken();
         patch({ bridgeToken: token });
-        await refreshResume(r);
+        const count = await refreshResume(r);
+        if (!count) setShowResume(true); // 首次启动且简历为空：直接打开简历编辑器
       } catch {
         /* ignore */
       }
@@ -131,14 +129,6 @@ export function App() {
     });
     return () => un?.();
   }, []);
-
-  async function onSubmitResume(text: string) {
-    await fsWrite(root, "resumes/resume.md", text);
-    setNeedResume(false);
-    await refreshResume(root);
-    setSbTab("files");
-    setFileToOpen("resumes/resume.md");
-  }
 
   function startDrag(e: React.MouseEvent) {
     e.preventDefault();
@@ -361,18 +351,12 @@ export function App() {
         score={scoreStatus}
       />
 
-      {needResume && root && (
-        <ResumeOnboard
-          onSubmit={onSubmitResume}
-          onSkip={() => setNeedResume(false)}
-        />
-      )}
-
       {showResume && root && (
         <ResumeBuilderModal
           gateway={gateway}
           root={root}
           resumeText={resumeText}
+          onRawSaved={() => refreshResume(root)}
           onClose={() => {
             setShowResume(false);
             refreshResume(root);

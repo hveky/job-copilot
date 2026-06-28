@@ -1,6 +1,6 @@
 import {
   AlertTriangle,
-  BookOpen,
+  FileText,
   Maximize2,
   Minus,
   PanelRightClose,
@@ -66,13 +66,13 @@ export function Header(props: {
         </button>
         <button
           className="ghost inline-flex h-9 items-center gap-2 px-3"
-          title="使用指南"
-          aria-label="使用指南"
+          title="简历"
+          aria-label="简历"
           type="button"
           onClick={props.onOpenResume}
         >
-          <BookOpen {...ICON} />
-          <span className="hidden text-[13px] font-medium lg:inline">使用指南</span>
+          <FileText {...ICON} />
+          <span className="hidden text-[13px] font-medium lg:inline">简历</span>
         </button>
         <button
           className="icon-btn ghost"

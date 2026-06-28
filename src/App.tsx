@@ -113,8 +113,7 @@ export function App() {
         setRoot(r);
         const token = await bridgeToken();
         patch({ bridgeToken: token });
-        const count = await refreshResume(r);
-        if (!count) setShowResume(true); // 首次启动且简历为空：直接打开简历编辑器
+        await refreshResume(r);
       } catch {
         /* ignore */
       }

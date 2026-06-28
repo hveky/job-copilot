@@ -50,6 +50,9 @@ export function ResumeBuilderModal(props: {
   const [err, setErr] = useState("");
   const [note, setNote] = useState("");
   const docRef = useRef<HTMLDivElement>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+  const [docH, setDocH] = useState(0);
 
   useEffect(() => {
     if (!props.root) return;
@@ -57,6 +60,26 @@ export function ResumeBuilderModal(props: {
       if (r) setResume(r);
     }).catch(() => {});
   }, [props.root]);
+
+  // 预览按容器宽度等比缩放 720px 文档，居中不裁切；导出 PNG 仍走未缩放的 docRef。
+  useEffect(() => {
+    const el = previewRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      const w = el.clientWidth - 40; // 减去左右 padding
+      setScale(Math.max(0.4, Math.min(1, w / 720)));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const el = docRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setDocH(el.scrollHeight));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   function setBasic(k: keyof Resume["basics"], v: string) {
     setResume((r) => ({ ...r, basics: { ...r.basics, [k]: v } }));
@@ -413,10 +436,17 @@ export function ResumeBuilderModal(props: {
             </section>
           </div>
 
-          {/* Right: Preview */}
-          <div style={{ flex: 1, overflowY: "auto", background: "#e8e8e8", display: "flex", justifyContent: "center", padding: 20 }}>
-            <div ref={docRef}>
-              <ResumeDocument resume={resume} />
+          {/* Right: Preview（等比缩放，居中不裁切） */}
+          <div
+            ref={previewRef}
+            style={{ flex: 1, overflowY: "auto", overflowX: "hidden", background: "#e8e8e8", display: "flex", justifyContent: "center", alignItems: "flex-start", padding: 20 }}
+          >
+            <div style={{ width: 720 * scale, height: docH ? docH * scale : undefined, flex: "0 0 auto" }}>
+              <div style={{ transform: `scale(${scale})`, transformOrigin: "top left" }}>
+                <div ref={docRef} style={{ width: 720 }}>
+                  <ResumeDocument resume={resume} />
+                </div>
+              </div>
             </div>
           </div>
         </div>

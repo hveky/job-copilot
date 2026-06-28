@@ -285,6 +285,7 @@ export function BossPanelV2(props: {
     const matched = jobs.find((j) => j.id === rec.id || j.href === rec.href);
     const rich: ApplyRecord = {
       ...rec,
+      salary: rec.salary || matched?.salary || "",
       region: rec.region || matched?.region || matched?.area || "",
       direction: rec.direction || matched?.direction || inferDirection(rec.title, rec.track),
     };

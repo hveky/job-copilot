@@ -10,6 +10,7 @@ import { FilesPanel } from "./components/FilesPanel";
 import { JobPicker } from "./components/JobPicker";
 import { SettingsModal } from "./components/Settings";
 import { ResumeViewerModal } from "./components/ResumeViewerModal";
+import { DisclaimerModal } from "./components/DisclaimerModal";
 import { ProfilePage } from "./components/ProfilePage";
 import { ApplyRecordsPage } from "./components/ApplyRecordsPage";
 import { Tabs } from "./ui";
@@ -21,6 +22,7 @@ import {
   type Settings,
 } from "./state/settings";
 import { BUILTIN_FEISHU } from "./config/feishu";
+import { hasBuiltinDs } from "./config/deepseek";
 import {
   bridgeToken,
   dataRoot,
@@ -151,7 +153,7 @@ export function App() {
   }
 
   const gateway = useMemo(() => toGatewayConfig(settings), [settings]);
-  const hasKey = !!settings.dsKey;
+  const hasKey = !!settings.dsKey || hasBuiltinDs();
 
   function patch(p: Partial<Settings>) {
     setSettings((cur) => {
@@ -366,6 +368,10 @@ export function App() {
           onSave={onSave}
           onClose={() => setShowSettings(false)}
         />
+      )}
+
+      {!settings.disclaimerAccepted && (
+        <DisclaimerModal onAccept={() => patch({ disclaimerAccepted: true })} />
       )}
     </div>
   );

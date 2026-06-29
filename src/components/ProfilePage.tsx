@@ -5,11 +5,15 @@ import { InstructionPanel } from "./InstructionPanel";
 
 export function ProfilePage(props: {
   resumeText: string;
+  resumeImageCount: number;
+  resumeImportNotice?: string;
   instruction: string;
   gateway: GatewayConfig;
   onInstructionChange: (value: string) => void;
   onOpenResume: () => void;
 }) {
+  const hasResumeText = props.resumeText.trim().length > 0;
+
   return (
     <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(360px,0.9fr)_minmax(520px,1.3fr)]">
       <section className="overflow-hidden rounded border border-border bg-surface shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
@@ -22,8 +26,17 @@ export function ProfilePage(props: {
           <Button variant="secondary" size="sm" onClick={props.onOpenResume}>查看简历</Button>
         </header>
         <div className="max-h-[calc(100vh-190px)] overflow-auto p-5">
-          {props.resumeText.trim() ? (
+          {props.resumeImportNotice && (
+            <div className="mb-3 rounded border border-accent bg-accent-soft p-3 text-[13px] leading-6 text-text">
+              {props.resumeImportNotice}
+            </div>
+          )}
+          {hasResumeText ? (
             <pre className="m-0 whitespace-pre-wrap rounded border border-border bg-[#F8FAFC] p-4 text-[13px] leading-6 text-text">{props.resumeText}</pre>
+          ) : props.resumeImageCount > 0 ? (
+            <div className="rounded border border-border bg-[#F8FAFC] p-6 text-[13px] leading-6 text-text-2">
+              已导入 {props.resumeImageCount} 张简历图（用于投递附图）。如需 AI 评分，请整理或导入文本型 PDF/Markdown。
+            </div>
           ) : (
             <div className="rounded border border-dashed border-border bg-[#F8FAFC] p-6 text-[13px] leading-6 text-text-2">
               暂未读取到简历。可通过上方按钮整理或导入简历，保存后会自动用于 AI 评分与生成。

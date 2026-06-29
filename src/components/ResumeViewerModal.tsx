@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { FileText, Image as ImageIcon, Upload, Star, Loader2 } from "lucide-react";
 import { Modal, Button, StatusPill } from "../ui";
-import { fsList, fsRead, fsReadBytes, fsWriteBytes } from "../lib/tauri";
+import { fsList, fsRead, fsReadBytes, fsWrite, fsWriteBytes } from "../lib/tauri";
 import { renderMd } from "../lib/markdown";
+import { buildResumeImportNotice, readPdfPageTextSafely } from "../lib/resume";
 import { getDefaultResumePng, setDefaultResumePng } from "../state/resumeAssets";
 
 interface PngItem {
@@ -33,13 +34,14 @@ function canvasToPngBytes(canvas: HTMLCanvasElement): number[] {
 }
 
 /** 简历查看器：只读预览 Markdown 简历 + 管理/导入 PNG 简历图。 */
-export function ResumeViewerModal(props: { root: string; onClose: () => void }) {
+export function ResumeViewerModal(props: { root: string; onClose: () => void; onImported?: (notice: string) => void | Promise<void> }) {
   const [md, setMd] = useState("");
   const [pngs, setPngs] = useState<PngItem[]>([]);
   const [defaultPath, setDefaultPath] = useState(getDefaultResumePng());
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState("");
   const [err, setErr] = useState("");
+  const [notice, setNotice] = useState("");
   const [lightbox, setLightbox] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -92,14 +94,18 @@ export function ResumeViewerModal(props: { root: string; onClose: () => void }) 
     return max + 1;
   }
 
-  async function renderPdf(buf: ArrayBuffer): Promise<number[][]> {
+  async function renderPdf(buf: ArrayBuffer): Promise<{ pages: number[][]; text: string }> {
     const pdfjs = await import("pdfjs-dist");
     const workerUrl = (await import("pdfjs-dist/build/pdf.worker.min.mjs?url")).default;
     pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
     const pdf = await pdfjs.getDocument({ data: new Uint8Array(buf) }).promise;
     const pages: number[][] = [];
+    const textParts: string[] = [];
     for (let i = 1; i <= pdf.numPages; i++) {
       const page = await pdf.getPage(i);
+      const pageText = await readPdfPageTextSafely(page);
+      if (pageText) textParts.push(pageText);
+
       const viewport = page.getViewport({ scale: 2 });
       const canvas = document.createElement("canvas");
       canvas.width = Math.ceil(viewport.width);
@@ -109,7 +115,7 @@ export function ResumeViewerModal(props: { root: string; onClose: () => void }) 
       await page.render({ canvas, canvasContext: ctx, viewport }).promise;
       pages.push(canvasToPngBytes(canvas));
     }
-    return pages;
+    return { pages, text: textParts.join("\n\n").trim() };
   }
 
   async function imageToPng(file: File): Promise<number[]> {
@@ -129,6 +135,7 @@ export function ResumeViewerModal(props: { root: string; onClose: () => void }) 
     e.target.value = ""; // 允许重复选同一文件
     if (!file) return;
     setErr("");
+    setNotice("");
     setImporting("处理中…");
     try {
       const existing = pngs.map((p) => p.path);
@@ -137,10 +144,25 @@ export function ResumeViewerModal(props: { root: string; onClose: () => void }) 
         file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
 
       const savedPaths: string[] = [];
+      let extractedText = false;
+      let textWritten = false;
       if (isPdf) {
         setImporting("解析 PDF…");
-        const pages = await renderPdf(await file.arrayBuffer());
+        const { pages, text } = await renderPdf(await file.arrayBuffer());
         if (pages.length === 0) throw new Error("PDF 没有可渲染的页面。");
+        if (text) {
+          extractedText = true;
+          let existingMd = "";
+          try {
+            existingMd = await fsRead(props.root, "resumes/resume.md");
+          } catch {
+            /* 不存在则写入抽取文本 */
+          }
+          if (!existingMd.trim()) {
+            await fsWrite(props.root, "resumes/resume.md", text);
+            textWritten = true;
+          }
+        }
         for (const bytes of pages) {
           const path = `resumes/简历_${n}.png`;
           await fsWriteBytes(props.root, path, bytes);
@@ -160,7 +182,14 @@ export function ResumeViewerModal(props: { root: string; onClose: () => void }) 
       if (!getDefaultResumePng() && savedPaths[0]) {
         setDefaultResumePng(savedPaths[0]);
       }
+      const importNotice = buildResumeImportNotice({
+        pages: savedPaths.length,
+        extractedText,
+        textWritten,
+      });
       await load();
+      setNotice(importNotice);
+      await props.onImported?.(importNotice);
     } catch (e2) {
       setErr("导入失败：" + String(e2));
     } finally {
@@ -226,6 +255,7 @@ export function ResumeViewerModal(props: { root: string; onClose: () => void }) 
           </p>
 
           {err && <div className="err mb-2">{err}</div>}
+          {notice && !err && <div className="mb-2 rounded border border-accent bg-accent-soft p-2 text-aux leading-5 text-text">{notice}</div>}
 
           {loading ? (
             <div className="hint">加载中…</div>

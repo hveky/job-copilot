@@ -26,10 +26,12 @@ import { hasBuiltinDs } from "./config/deepseek";
 import {
   bridgeToken,
   dataRoot,
+  fsList,
   isDesktop,
   listenJobsReceived,
   readResume,
 } from "./lib/tauri";
+import { countResumeImages } from "./lib/resume";
 import { sidebar as SB } from "./design/tokens";
 import { TaskStatusBar, type ApplyTaskStatus, type ContentTaskStatus } from "./components/TaskStatusBar";
 import type { Tier } from "./gateway/types";
@@ -88,6 +90,8 @@ export function App() {
 
   const [root, setRoot] = useState("");
   const [resumeText, setResumeText] = useState("");
+  const [resumeImgCount, setResumeImgCount] = useState(0);
+  const [resumeImportNotice, setResumeImportNotice] = useState("");
   const [fileToOpen, setFileToOpen] = useState("");
   const [inboxKey, setInboxKey] = useState(0);
   const [candidates, setCandidates] = useState(0);
@@ -97,12 +101,18 @@ export function App() {
   const totalApplied = useMemo(() => loadRecords().length, [metricsKey]);
 
   async function refreshResume(r: string): Promise<number> {
-    if (!r) return 0;
+    if (!r) {
+      setResumeText("");
+      setResumeImgCount(0);
+      return 0;
+    }
     try {
-      const { text, count } = await readResume(r);
+      const [{ text, count }, files] = await Promise.all([readResume(r), fsList(r)]);
       setResumeText(text);
+      setResumeImgCount(countResumeImages(files));
       return count;
     } catch {
+      setResumeImgCount(0);
       return 0;
     }
   }
@@ -278,6 +288,8 @@ export function App() {
           {activeView === "profile" && (
             <ProfilePage
               resumeText={resumeText}
+              resumeImageCount={resumeImgCount}
+              resumeImportNotice={resumeImportNotice}
               instruction={settings.instruction}
               gateway={gateway}
               onInstructionChange={(instruction) => patch({ instruction })}
@@ -358,6 +370,12 @@ export function App() {
           onClose={() => {
             setShowResume(false);
             refreshResume(root);
+          }}
+          onImported={async (notice) => {
+            setResumeImportNotice(notice);
+            setShowResume(false);
+            await refreshResume(root);
+            setActiveView("profile");
           }}
         />
       )}

@@ -1,4 +1,6 @@
 import { useRef, useState } from "react";
+import { FileText, Sparkles, Square, CheckCircle2 } from "lucide-react";
+import { Button } from "../ui";
 import { chat, GatewayError } from "../gateway/client";
 import type { GatewayConfig, Tier } from "../gateway/types";
 import { contentPackSystem, contentPackUser } from "../prompts/templates";
@@ -93,7 +95,10 @@ export function ContentPanel(props: {
 
   return (
     <div className="card">
-      <h3>② 粘贴岗位 JD</h3>
+      <h3 className="flex items-center gap-2">
+        <FileText size={18} strokeWidth={1.75} className="text-accent-strong" />
+        粘贴岗位 JD · 生成内容包
+      </h3>
       <textarea
         rows={7}
         value={props.jd}
@@ -101,18 +106,24 @@ export function ContentPanel(props: {
         onChange={(e) => props.onJdChange(e.target.value)}
       />
       <div className="row" style={{ marginTop: 10 }}>
-        <button
-          className="primary"
-          disabled={busy}
+        <Button
+          variant="primary"
+          loading={busy}
           onClick={generate}
+          icon={<Sparkles size={16} strokeWidth={1.75} />}
           title="生成应试内容包并写入 preps 文件夹"
         >
-          {busy ? "生成中…" : "③ 一键生成内容包"}
-        </button>
+          {busy ? "生成中…" : "一键生成内容包"}
+        </Button>
         {busy && (
-          <button className="ghost small" onClick={stop}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={stop}
+            icon={<Square size={14} strokeWidth={1.75} />}
+          >
             停止
-          </button>
+          </Button>
         )}
         <span className="spacer" style={{ flex: 1 }} />
         <span className="hint">档位</span>
@@ -133,8 +144,8 @@ export function ContentPanel(props: {
         </div>
       )}
       {savedPath && (
-        <div className="hint" style={{ marginTop: 10 }}>
-          ✅ 已生成 →{" "}
+        <div className="hint inline-flex items-center gap-1" style={{ marginTop: 10 }}>
+          <CheckCircle2 size={14} strokeWidth={1.75} className="text-ok" /> 已生成 →{" "}
           <a
             href="#"
             onClick={(e) => {

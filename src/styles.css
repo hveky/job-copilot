@@ -1,63 +1,48 @@
-/* ============ 设计系统:沉静专业求职工作台 · 浅色默认 + 深色可切 ============ */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   设计系统：桌面效率工作台 · 浅色 · 专业克制（DESIGN_SPEC.md）
+   颜色用 CSS 变量暴露，旧组件的内联 var(--x) 与 Tailwind 工具类同源。
+   ============================================================ */
 :root {
-  /* 浅色(暖中性 + 深青绿品牌色) */
-  --bg: #f3f1ec;
+  --bg: #f5f8fb;
+  --workbench: #f5f8fb;
   --surface: #ffffff;
-  --surface-2: #f6f4f0;
-  --surface-3: #efece6;
-  --border: #e6e2da;
-  --border-strong: #d6d1c7;
-  --text: #1b1e24;
-  --text-2: #565e6b;
-  --muted: #8b93a0;
-  --accent: #0e8f6e;
-  --accent-strong: #0a7355;
-  --accent-soft: #e3f3ec;
+  --surface-2: #f8fafc;
+  --surface-3: #fbfcfe;
+  --text: #111827;
+  --text-2: #64748b;
+  --muted: #94a3b8;
+  --border: #e2e8f0;
+  --border-strong: #cbd5e1;
+  --accent: #0f9f7a;
+  --accent-strong: #0b8668;
+  --accent-soft: #e7f8f3;
   --on-accent: #ffffff;
-  --ok: #0e8f6e;
-  --warn: #b7791f;
-  --danger: #d4433a;
-  --danger-soft: #fbeae9;
-  --shadow-sm: 0 1px 2px rgba(24, 26, 32, 0.05), 0 1px 3px rgba(24, 26, 32, 0.04);
-  --shadow-md: 0 6px 22px rgba(24, 26, 32, 0.08);
-  --shadow-pop: 0 12px 40px rgba(24, 26, 32, 0.16);
-  --radius: 12px;
-  --radius-sm: 8px;
-  --font-display: "Outfit", -apple-system, "Segoe UI", "PingFang SC",
-    "Microsoft YaHei", sans-serif;
-  --font: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei",
+  --ai: #1d6fea;
+  --ai-soft: #eff6ff;
+  --ok: #10b981;
+  --warn: #f59e0b;
+  --danger: #ef4444;
+  --danger-soft: #fef2f2;
+
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-md: 0 8px 20px rgba(15, 23, 42, 0.07);
+  --shadow-pop: 0 18px 48px rgba(15, 23, 42, 0.14);
+
+  --radius: 8px;
+  --radius-sm: 6px;
+  --radius-lg: 16px;
+
+  --font: "Inter", "SF Pro", "Segoe UI", "PingFang SC", "Microsoft YaHei",
     system-ui, sans-serif;
+  --font-display: var(--font);
   color-scheme: light;
 }
 
-:root[data-theme="dark"] {
-  /* 深色(墨蓝,非纯黑) */
-  --bg: #13151b;
-  --surface: #1b1e26;
-  --surface-2: #20242e;
-  --surface-3: #262b37;
-  --border: #2b303d;
-  --border-strong: #3a4150;
-  --text: #e9ebf0;
-  --text-2: #a6adbb;
-  --muted: #6f7888;
-  --accent: #1cb585;
-  --accent-strong: #16a377;
-  --accent-soft: rgba(28, 181, 133, 0.14);
-  --on-accent: #06231b;
-  --ok: #1cb585;
-  --warn: #e0a93b;
-  --danger: #ff6b63;
-  --danger-soft: rgba(255, 107, 99, 0.12);
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 8px 28px rgba(0, 0, 0, 0.4);
-  --shadow-pop: 0 16px 48px rgba(0, 0, 0, 0.55);
-  color-scheme: dark;
-}
-
-* {
-  box-sizing: border-box;
-}
 html,
 body,
 #root {
@@ -72,95 +57,17 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-.app {
-  display: grid;
-  grid-template-rows: 56px 1fr;
-  height: 100vh;
-}
-
-/* ---------- 顶栏 ---------- */
-.topbar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 0 18px;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
-}
-.topbar .brand {
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 17px;
-  letter-spacing: 0.2px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.topbar .brand::before {
-  content: "";
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 0 4px var(--accent-soft);
-}
-.topbar .spacer {
-  flex: 1;
-}
-.topbar .badge {
-  font-size: 12px;
-  color: var(--muted);
-  padding: 3px 9px;
-  border-radius: 999px;
-  background: var(--surface-2);
-}
-
-/* ---------- 主体 ---------- */
-.body {
-  display: grid;
-  grid-template-columns: 1fr 392px;
-  min-height: 0;
-}
-.body.collapsed {
-  grid-template-columns: 1fr;
-}
-.main {
-  min-width: 0;
-  overflow: auto;
-  padding: 18px 20px;
-}
-@media (max-width: 1024px) {
-  .main {
-    padding: 14px 14px;
-  }
-}
-.divider {
-  background: var(--border);
-  cursor: col-resize;
-  transition: background 0.15s;
-}
-.divider:hover {
-  background: var(--accent);
-}
-.sidebar {
-  border-left: 1px solid var(--border);
-  background: var(--surface);
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-/* ---------- 控件 ---------- */
+/* ---------- 控件（全局元素基线，覆盖 preflight） ---------- */
 button {
   font: inherit;
   cursor: pointer;
   border: 1px solid var(--border-strong);
   background: var(--surface);
   color: var(--text);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
   padding: 8px 14px;
   transition: background 0.15s, border-color 0.15s, transform 0.05s,
-    box-shadow 0.15s;
+    box-shadow 0.15s, color 0.15s;
 }
 button:hover {
   border-color: var(--accent);
@@ -168,6 +75,10 @@ button:hover {
 }
 button:active {
   transform: translateY(1px);
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 button.primary {
   background: var(--accent);
@@ -183,20 +94,48 @@ button.primary:hover {
   box-shadow: var(--shadow-md);
 }
 button.primary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
   box-shadow: none;
 }
 button.ghost {
   background: transparent;
   border-color: var(--border);
 }
+button.ghost:hover {
+  background: var(--surface-2);
+}
 button.small {
   padding: 5px 11px;
   font-size: 12.5px;
 }
 button.icon-btn {
-  padding: 5px 9px;
+  padding: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-2);
+}
+button.icon-btn:hover {
+  background: var(--surface-2);
+  color: var(--accent-strong);
+}
+button.danger {
+  background: transparent;
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+  color: var(--danger);
+}
+button.danger:hover {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+/* loading 旋转 */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.spin {
+  animation: spin 0.8s linear infinite;
 }
 
 textarea,
@@ -204,10 +143,10 @@ input,
 select {
   font: inherit;
   width: 100%;
-  background: var(--surface-2);
+  background: var(--surface-3);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius);
   padding: 9px 11px;
   resize: vertical;
   transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
@@ -224,6 +163,30 @@ textarea::placeholder,
 input::placeholder {
   color: var(--muted);
 }
+/* 复选 / 单选 / 滑块不套用上面的文本输入样式 */
+input[type="checkbox"],
+input[type="radio"] {
+  width: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  accent-color: var(--accent);
+  box-shadow: none;
+}
+input[type="range"] {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  accent-color: var(--accent);
+  box-shadow: none;
+  cursor: pointer;
+}
+input[type="range"]:focus {
+  box-shadow: none;
+  background: transparent;
+}
 label.field {
   display: block;
   margin: 12px 0 5px;
@@ -237,22 +200,38 @@ label.field {
   gap: 8px;
   align-items: center;
 }
+.spacer {
+  flex: 1;
+}
+.hint {
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+.err {
+  color: var(--danger);
+  font-size: 13px;
+  margin-top: 8px;
+  background: var(--danger-soft);
+  border: 1px solid color-mix(in srgb, var(--danger) 25%, transparent);
+  border-radius: var(--radius-sm);
+  padding: 7px 10px;
+}
 
 /* ---------- 卡片 ---------- */
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 18px;
-  margin-bottom: 16px;
-  box-shadow: var(--shadow-sm);
+  padding: 16px;
+  margin-bottom: 0;
+  box-shadow: var(--shadow-card);
 }
 .card h3 {
   margin: 0 0 12px;
-  font-family: var(--font-display);
-  font-size: 14.5px;
+  font-size: 14px;
   font-weight: 600;
-  letter-spacing: 0.2px;
+  letter-spacing: 0.1px;
 }
 
 /* ---------- 岗位 chips ---------- */
@@ -309,8 +288,8 @@ label.field {
   gap: 10px;
   padding: 10px 12px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface-2);
+  border-radius: var(--radius);
+  background: var(--surface-3);
 }
 .job-row-title {
   font-weight: 500;
@@ -394,7 +373,7 @@ label.field {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
 }
 .tree-row:hover {
   background: var(--surface-2);
@@ -410,6 +389,7 @@ label.field {
 }
 .tree-icon {
   flex: 0 0 auto;
+  display: inline-flex;
 }
 .write-confirm {
   border-top: 1px solid var(--warn);
@@ -438,8 +418,7 @@ label.field {
 }
 .metric-num {
   font-size: 28px;
-  font-weight: 600;
-  font-family: var(--font-display);
+  font-weight: 700;
   line-height: 1.1;
   color: var(--accent-strong);
 }
@@ -475,8 +454,7 @@ label.field {
 }
 .funnel-num {
   font-size: 22px;
-  font-weight: 600;
-  font-family: var(--font-display);
+  font-weight: 700;
 }
 .funnel-arrow {
   color: var(--muted);
@@ -507,7 +485,7 @@ label.field {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22);
+  box-shadow: var(--shadow-pop);
   padding: 12px 14px;
 }
 
@@ -525,8 +503,8 @@ label.field {
   gap: 10px;
   padding: 8px 10px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface-2);
+  border-radius: var(--radius);
+  background: var(--surface-3);
 }
 .batch-status {
   font-size: 11px;
@@ -571,7 +549,7 @@ label.field {
   text-align: center;
 }
 
-/* ---------- 侧栏 ---------- */
+/* ---------- 侧栏 tabs / 聊天 / composer ---------- */
 .sb-tabs {
   display: flex;
   border-bottom: 1px solid var(--border);
@@ -589,9 +567,11 @@ label.field {
 }
 .sb-tabs button:hover {
   color: var(--text);
+  background: transparent;
 }
 .sb-tabs button.active {
   color: var(--accent-strong);
+  background: var(--accent-soft);
   border-bottom-color: var(--accent);
 }
 .chat {
@@ -633,30 +613,26 @@ label.field {
   gap: 8px;
   background: var(--surface);
 }
-.hint {
-  color: var(--muted);
-  font-size: 12.5px;
-  line-height: 1.6;
-}
 .tier-pill {
   font-size: 11px;
-  color: var(--accent-strong);
-  border: 1px solid var(--accent);
-  background: var(--accent-soft);
+  color: var(--ai);
+  border: 1px solid color-mix(in srgb, var(--ai) 35%, transparent);
+  background: var(--ai-soft);
   border-radius: 999px;
   padding: 2px 9px;
 }
 
-/* ---------- 设置弹层 ---------- */
+/* ---------- 弹层 ---------- */
 .modal-mask {
   position: fixed;
   inset: 0;
-  background: rgba(15, 17, 22, 0.5);
+  background: rgba(15, 23, 42, 0.5);
   backdrop-filter: blur(3px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 50;
+  padding: 24px;
 }
 .modal {
   width: 560px;
@@ -665,13 +641,14 @@ label.field {
   overflow: auto;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: var(--radius-lg);
   padding: 24px;
   box-shadow: var(--shadow-pop);
 }
 .modal h2 {
   margin: 0 0 4px;
-  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
 }
 .modal .actions {
   display: flex;
@@ -679,25 +656,12 @@ label.field {
   gap: 8px;
   margin-top: 18px;
 }
-.err {
-  color: var(--danger);
-  font-size: 13px;
-  margin-top: 8px;
-  background: var(--danger-soft);
-  border-radius: var(--radius-sm);
-  padding: 7px 10px;
-}
-
-/* ---------- 折叠边栏 ---------- */
-.body.collapsed {
-  grid-template-columns: 1fr;
-}
 
 /* ---------- Markdown 预览 / 编辑 ---------- */
 .md-edit {
   width: 100%;
   min-height: 200px;
-  background: var(--surface-2);
+  background: var(--surface-3);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 16px;
@@ -716,7 +680,6 @@ label.field {
 .md-preview h3 {
   margin: 18px 0 9px;
   line-height: 1.35;
-  font-family: var(--font-display);
 }
 .md-preview h1 {
   font-size: 20px;
@@ -730,8 +693,13 @@ label.field {
   font-size: 14px;
   color: var(--accent-strong);
 }
-.md-preview ul,
+.md-preview ul {
+  list-style: disc;
+  padding-left: 22px;
+  margin: 7px 0;
+}
 .md-preview ol {
+  list-style: decimal;
   padding-left: 22px;
   margin: 7px 0;
 }
@@ -739,7 +707,7 @@ label.field {
   margin: 4px 0;
 }
 .md-preview code {
-  background: var(--surface-3);
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 5px;
   padding: 1px 6px;
@@ -747,7 +715,7 @@ label.field {
   font-size: 12.5px;
 }
 .md-preview pre {
-  background: var(--surface-3);
+  background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 12px 14px;
@@ -798,75 +766,3 @@ label.field {
   background: transparent;
 }
 
-/* ---------- 简历文档 ---------- */
-.resume-doc {
-  width: 720px;
-  min-height: 400px;
-  padding: 40px;
-  background: #fff;
-  color: #1a1a1a;
-  font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
-  font-size: 14px;
-  line-height: 1.5;
-}
-.resume-doc h1 {
-  font-size: 26px;
-  font-weight: 700;
-  margin: 0 0 4px;
-  color: #111;
-  letter-spacing: 0.3px;
-}
-.resume-doc .resume-headline {
-  font-size: 15px;
-  color: #444;
-  margin: 0 0 6px;
-}
-.resume-doc .resume-contact {
-  font-size: 13px;
-  color: #666;
-  margin: 0 0 20px;
-}
-.resume-doc section {
-  margin-top: 20px;
-}
-.resume-doc h2 {
-  font-size: 15px;
-  font-weight: 700;
-  color: #111;
-  margin: 0 0 8px;
-  padding-bottom: 4px;
-  border-bottom: 1.5px solid #ddd;
-  text-transform: none;
-}
-.resume-doc .resume-entry {
-  margin-bottom: 12px;
-}
-.resume-doc .resume-entry-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 8px;
-}
-.resume-doc .resume-entry-title {
-  font-weight: 600;
-  color: #1a1a1a;
-  font-size: 14px;
-}
-.resume-doc .resume-entry-period {
-  font-size: 12.5px;
-  color: #888;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-.resume-doc ul {
-  margin: 6px 0 0;
-  padding-left: 20px;
-}
-.resume-doc ul li {
-  margin-bottom: 3px;
-  color: #333;
-}
-.resume-doc p {
-  margin: 0;
-  color: #333;
-}

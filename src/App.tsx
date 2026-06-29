@@ -1,14 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BossPanel } from "./components/BossPanel";
-import { ContentPanel } from "./components/ContentPanel";
-import { Copilot } from "./components/Copilot";
+import { MessageSquare, FolderClosed } from "lucide-react";
+import { Header } from "./components/Header";
+import { AutoApplyFlow, type AutoApplyStep } from "./components/AutoApplyFlow";
+import { LeftNavRail, type NavView } from "./components/LeftNavRail";
+import { ApplyQuotaCard, RiskControlCard } from "./components/ApplySidebarCards";
+import { BossPanelV2 } from "./components/BossPanelV2";
+import { ReplyWorkspace } from "./components/ReplyWorkspace";
 import { FilesPanel } from "./components/FilesPanel";
-import { InstructionPanel } from "./components/InstructionPanel";
-import { JobInbox } from "./components/JobInbox";
 import { JobPicker } from "./components/JobPicker";
-import { ResumeOnboard } from "./components/ResumeOnboard";
 import { SettingsModal } from "./components/Settings";
-import { ResumeBuilderModal } from "./components/ResumeBuilderModal";
+import { ResumeViewerModal } from "./components/ResumeViewerModal";
+import { ProfilePage } from "./components/ProfilePage";
+import { ApplyRecordsPage } from "./components/ApplyRecordsPage";
+import { Tabs } from "./ui";
+import { getDaily, loadRecords } from "./lib/ledger";
 import {
   loadSettings,
   saveSettings,
@@ -17,51 +22,97 @@ import {
 } from "./state/settings";
 import { BUILTIN_FEISHU } from "./config/feishu";
 import {
+  bridgeToken,
   dataRoot,
-  fsWrite,
   isDesktop,
   listenJobsReceived,
   readResume,
 } from "./lib/tauri";
+import { sidebar as SB } from "./design/tokens";
+import { TaskStatusBar, type ApplyTaskStatus, type ContentTaskStatus } from "./components/TaskStatusBar";
+import type { Tier } from "./gateway/types";
+import type { ScoreProgress } from "./lib/jobWorkflow";
 
-type SbTab = "copilot" | "instruction" | "files";
+type SbTab = "copilot" | "files";
+
+const SB_TABS = [
+  { key: "copilot" as const, label: "回复助手", icon: <MessageSquare size={16} strokeWidth={1.75} /> },
+  { key: "files" as const, label: "文件", icon: <FolderClosed size={16} strokeWidth={1.75} /> },
+];
 
 export function App() {
   const [settings, setSettings] = useState<Settings>(loadSettings);
+  const [activeView, setActiveView] = useState<NavView>("workbench");
   const [showSettings, setShowSettings] = useState(false);
   const [showResume, setShowResume] = useState(false);
   const [jd, setJd] = useState("");
+  const [contentTier, setContentTier] = useState<Tier>("deep");
+  const [contentStatus, setContentStatus] = useState<ContentTaskStatus>({
+    state: "idle",
+    tier: "deep",
+    model: settings.modelPro,
+  });
+  const [applyStatus, setApplyStatus] = useState<ApplyTaskStatus>({
+    state: "idle",
+    done: 0,
+    total: 0,
+  });
+  const [scoreStatus, setScoreStatus] = useState<ScoreProgress>({
+    total: 0,
+    done: 0,
+    running: 0,
+    failed: 0,
+    pending: 0,
+  });
   const [sbTab, setSbTab] = useState<SbTab>("copilot");
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(
+    () => typeof window === "undefined" || window.innerWidth >= 768,
+  );
+  const [narrow, setNarrow] = useState(
+    () => typeof window !== "undefined" && window.innerWidth < 768,
+  );
   const [sbWidth, setSbWidth] = useState(settings.sidebarWidth);
   const widthRef = useRef(settings.sidebarWidth);
 
-  // 文件优先:固定数据根目录 + 简历从 resumes/ 读取
+  useEffect(() => {
+    const onResize = () => {
+      const isNarrow = window.innerWidth < 768;
+      setNarrow(isNarrow);
+      if (isNarrow) setSidebarOpen(false);
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
   const [root, setRoot] = useState("");
   const [resumeText, setResumeText] = useState("");
-  const [needResume, setNeedResume] = useState(false);
   const [fileToOpen, setFileToOpen] = useState("");
-  // BOSS 扩展推送岗位时自增,触发收件箱刷新
   const [inboxKey, setInboxKey] = useState(0);
+  const [candidates, setCandidates] = useState(0);
+  const [metricsKey, setMetricsKey] = useState(0);
 
-  async function refreshResume(r: string) {
-    if (!r) return;
+  const todayApplied = useMemo(() => getDaily(), [metricsKey]);
+  const totalApplied = useMemo(() => loadRecords().length, [metricsKey]);
+
+  async function refreshResume(r: string): Promise<number> {
+    if (!r) return 0;
     try {
       const { text, count } = await readResume(r);
       setResumeText(text);
-      if (count === 0) setNeedResume(true);
+      return count;
     } catch {
-      /* ignore */
+      return 0;
     }
   }
 
-  // 启动:取固定根目录(桌面),建好的四个文件夹由 Rust 保证存在,然后载入简历
   useEffect(() => {
     if (!isDesktop()) return;
     (async () => {
       try {
         const r = await dataRoot();
         setRoot(r);
+        const token = await bridgeToken();
+        patch({ bridgeToken: token });
         await refreshResume(r);
       } catch {
         /* ignore */
@@ -70,7 +121,6 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 订阅 BOSS 扩展的入站推送:收到就让收件箱刷新
   useEffect(() => {
     let un: (() => void) | undefined;
     listenJobsReceived(() => setInboxKey((k) => k + 1)).then((fn) => {
@@ -79,22 +129,13 @@ export function App() {
     return () => un?.();
   }, []);
 
-  async function onSubmitResume(text: string) {
-    await fsWrite(root, "resumes/resume.md", text);
-    setNeedResume(false);
-    await refreshResume(root);
-    setSbTab("files");
-    setFileToOpen("resumes/resume.md");
-  }
-
   function startDrag(e: React.MouseEvent) {
     e.preventDefault();
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
     const move = (ev: MouseEvent) => {
-      // 下限 300;上限取 760 与「窗口宽 - 360(留给主区)」的较小值,窄窗下主区不被挤没
-      const upper = Math.min(760, Math.max(300, window.innerWidth - 360));
-      const w = Math.min(upper, Math.max(300, window.innerWidth - ev.clientX));
+      const upper = Math.min(SB.maxWidth, Math.max(SB.minWidth, window.innerWidth - 360));
+      const w = Math.min(upper, Math.max(SB.minWidth, window.innerWidth - ev.clientX));
       widthRef.current = w;
       setSbWidth(w);
     };
@@ -112,10 +153,6 @@ export function App() {
   const gateway = useMemo(() => toGatewayConfig(settings), [settings]);
   const hasKey = !!settings.dsKey;
 
-  useEffect(() => {
-    document.documentElement.dataset.theme = settings.theme;
-  }, [settings.theme]);
-
   function patch(p: Partial<Settings>) {
     setSettings((cur) => {
       const next = { ...cur, ...p };
@@ -130,151 +167,160 @@ export function App() {
     setShowSettings(false);
   }
 
-  // 内容包生成完毕 → 跳到「文件」面板并打开该文件
   function onGenerated(path: string) {
     setSidebarOpen(true);
     setSbTab("files");
     setFileToOpen(path);
+    setContentStatus({ state: "done", tier: contentTier, model: contentTier === "deep" ? settings.modelPro : settings.modelFlash, path });
   }
 
-  return (
-    <div className="app">
-      <header className="topbar">
-        <span className="brand">求职作战助手</span>
-        <span className="badge">M1 · 内容生成 + 回复助手</span>
-        <span className="spacer" />
-        {!hasKey && (
-          <span className="badge" style={{ color: "var(--warn)" }}>
-            ⚠ 未配置 DeepSeek Key
-          </span>
-        )}
-        <button
-          className="small"
-          title="切换浅色 / 深色"
-          onClick={() =>
-            patch({ theme: settings.theme === "dark" ? "light" : "dark" })
-          }
-        >
-          {settings.theme === "dark" ? "浅色" : "深色"}
-        </button>
-        <button className="small" onClick={() => setShowResume(true)}>
-          简历
-        </button>
-        <button className="small" onClick={() => setShowSettings(true)}>
-          设置
-        </button>
-        <button
-          className="small"
-          title={sidebarOpen ? "折叠右侧边栏" : "展开右侧边栏"}
-          onClick={() => setSidebarOpen((v) => !v)}
-        >
-          {sidebarOpen ? "» 边栏" : "« 边栏"}
-        </button>
-      </header>
+  function onContentTierChange(tier: Tier) {
+    setContentTier(tier);
+    setContentStatus((cur) => ({
+      ...cur,
+      tier,
+      model: tier === "deep" ? settings.modelPro : settings.modelFlash,
+    }));
+  }
 
-      <div
-        className={"body" + (sidebarOpen ? "" : " collapsed")}
-        style={
-          sidebarOpen
-            ? { gridTemplateColumns: `minmax(0,1fr) 6px ${sbWidth}px` }
-            : undefined
-        }
-      >
-        <main className="main">
-          <JobPicker
-            gateway={gateway}
-            resume={resumeText}
-            targetJobs={settings.targetJobs}
-            activeJob={settings.activeJob}
-            jobHistory={settings.jobHistory}
-            cities={settings.cities}
-            city={settings.city}
-            salary={settings.salary}
-            onJobsChange={(targetJobs) => patch({ targetJobs })}
-            onActiveChange={(activeJob) => patch({ activeJob })}
-            onHistoryChange={(jobHistory) => patch({ jobHistory })}
-            onCitiesChange={(cities) => patch({ cities })}
-            onCityChange={(city) => patch({ city })}
-            onSalaryChange={(salary) => patch({ salary })}
-          />
-          <BossPanel
-            gateway={gateway}
-            job={settings.activeJob}
-            city={settings.city}
-            salary={settings.salary}
-            resume={resumeText}
-            instruction={settings.instruction}
-            dailyCap={settings.dailyCap}
-            delayMin={settings.delayMin}
-            delayMax={settings.delayMax}
-            feishuAppId={settings.feishuAppId || BUILTIN_FEISHU.clientId}
-            feishuAppSecret={settings.feishuAppSecret || BUILTIN_FEISHU.clientSecret}
-            feishuUserToken={settings.feishuUserToken}
-            feishuBaseToken={settings.feishuBaseToken}
-            feishuTableId={settings.feishuTableId}
-            root={root}
-            onPickJd={setJd}
-          />
-          <JobInbox
-            root={root}
-            refreshKey={inboxKey}
-            onUseJd={setJd}
-            onUseJob={(t) => patch({ activeJob: t })}
-          />
-          <ContentPanel
-            gateway={gateway}
-            job={settings.activeJob}
-            city={settings.city}
-            jd={jd}
-            onJdChange={setJd}
-            resume={resumeText}
-            instruction={settings.instruction}
-            root={root}
-            onGenerated={onGenerated}
-          />
+  const autoStep: AutoApplyStep = !settings.activeJob
+    ? "target"
+    : applyStatus.state === "running" || applyStatus.state === "waiting"
+      ? "apply"
+      : candidates > 0
+        ? "score"
+        : "fetch";
+
+  return (
+    <div className="flex h-screen flex-col bg-bg text-text">
+      <Header
+        statusLabel="M1 · 内容生成 · 回复助手"
+        hasKey={hasKey}
+        sidebarOpen={sidebarOpen}
+        onOpenResume={() => setShowResume(true)}
+        onOpenSettings={() => setShowSettings(true)}
+        onToggleSidebar={() => setSidebarOpen((v) => !v)}
+      />
+
+      <div className="flex min-h-0 w-full flex-1 bg-workbench">
+        <LeftNavRail active={activeView} onNavigate={setActiveView} onOpenSettings={() => setShowSettings(true)} />
+
+        <main className="min-w-0 flex-1 overflow-auto px-4 py-4 lg:px-[18px]">
+          {activeView === "workbench" && (
+            <div className="mx-auto grid max-w-none gap-3 xl:gap-4">
+              <AutoApplyFlow current={autoStep} />
+
+              <div className="grid gap-3 xl:grid-cols-[376px_minmax(0,1fr)] 2xl:grid-cols-[376px_minmax(0,1fr)]">
+                <aside className="grid content-start gap-3">
+                  <JobPicker
+                    gateway={gateway}
+                    resume={resumeText}
+                    targetJobs={settings.targetJobs}
+                    activeJob={settings.activeJob}
+                    jobHistory={settings.jobHistory}
+                    cities={settings.cities}
+                    city={settings.city}
+                    salary={settings.salary}
+                    onJobsChange={(targetJobs) => patch({ targetJobs })}
+                    onActiveChange={(activeJob) => patch({ activeJob })}
+                    onHistoryChange={(jobHistory) => patch({ jobHistory })}
+                    onCitiesChange={(cities) => patch({ cities })}
+                    onCityChange={(city) => patch({ city })}
+                    onSalaryChange={(salary) => patch({ salary })}
+                  />
+                  <ApplyQuotaCard
+                    todayApplied={todayApplied}
+                    dailyCap={settings.dailyCap}
+                    totalApplied={totalApplied}
+                  />
+                  <RiskControlCard
+                    todayApplied={todayApplied}
+                    dailyCap={settings.dailyCap}
+                    delayMin={settings.delayMin}
+                    delayMax={settings.delayMax}
+                  />
+                </aside>
+
+                <section className="min-w-0">
+                  <BossPanelV2
+                    gateway={gateway}
+                    job={settings.activeJob}
+                    city={settings.city}
+                    salary={settings.salary}
+                    resume={resumeText}
+                    instruction={settings.instruction}
+                    dailyCap={settings.dailyCap}
+                    delayMin={settings.delayMin}
+                    delayMax={settings.delayMax}
+                    feishuAppId={settings.feishuAppId || BUILTIN_FEISHU.clientId}
+                    feishuAppSecret={settings.feishuAppSecret || BUILTIN_FEISHU.clientSecret}
+                    feishuUserToken={settings.feishuUserToken}
+                    feishuBaseToken={settings.feishuBaseToken}
+                    feishuTableId={settings.feishuTableId}
+                    root={root}
+                    inboxRefreshKey={inboxKey}
+                    contentTier={contentTier}
+                    onContentTierChange={onContentTierChange}
+                    onPickJd={setJd}
+                    onGenerated={onGenerated}
+                    onCandidateCount={setCandidates}
+                    onContentStatus={setContentStatus}
+                    onApplyStatus={setApplyStatus}
+                    onScoreStatus={setScoreStatus}
+                    onApplied={() => setMetricsKey((k) => k + 1)}
+                  />
+                </section>
+              </div>
+            </div>
+          )}
+          {activeView === "profile" && (
+            <ProfilePage
+              resumeText={resumeText}
+              instruction={settings.instruction}
+              gateway={gateway}
+              onInstructionChange={(instruction) => patch({ instruction })}
+              onOpenResume={() => setShowResume(true)}
+            />
+          )}
+          {activeView === "records" && <ApplyRecordsPage />}
         </main>
 
-        {sidebarOpen && (
-          <div className="divider" onMouseDown={startDrag} title="拖拽调整边栏宽度" />
+        {sidebarOpen && !narrow && (
+          <div
+            className="w-1.5 cursor-col-resize bg-border transition-colors hover:bg-accent"
+            onMouseDown={startDrag}
+            title="拖拽调整助手宽度"
+          />
+        )}
+
+        {sidebarOpen && narrow && (
+          <div
+            className="fixed inset-0 z-40 bg-[rgba(15,23,42,0.4)]"
+            onClick={() => setSidebarOpen(false)}
+          />
         )}
 
         {sidebarOpen && (
-          <aside className="sidebar">
-            <div className="sb-tabs">
-              <button
-                className={sbTab === "copilot" ? "active" : ""}
-                onClick={() => setSbTab("copilot")}
-              >
-                回复助手
-              </button>
-              <button
-                className={sbTab === "instruction" ? "active" : ""}
-                onClick={() => setSbTab("instruction")}
-              >
-                Instruction
-              </button>
-              <button
-                className={sbTab === "files" ? "active" : ""}
-                onClick={() => setSbTab("files")}
-              >
-                文件
-              </button>
-            </div>
+          <aside
+            className={
+              "flex min-h-0 flex-col border-l border-border bg-surface shrink-0 " +
+              (narrow ? "fixed inset-y-0 right-0 z-40 shadow-pop" : "")
+            }
+            style={{ width: narrow ? Math.min(sbWidth, window.innerWidth * 0.92) : sbWidth }}
+          >
+            <Tabs
+              items={SB_TABS}
+              active={sbTab}
+              onChange={setSbTab}
+              variant="underline"
+            />
             {sbTab === "copilot" && (
-              <Copilot
+              <ReplyWorkspace
                 gateway={gateway}
                 job={settings.activeJob}
                 jd={jd}
                 resume={resumeText}
                 instruction={settings.instruction}
-              />
-            )}
-            {sbTab === "instruction" && (
-              <InstructionPanel
-                value={settings.instruction}
-                onChange={(instruction) => patch({ instruction })}
-                gateway={gateway}
-                resume={resumeText}
               />
             )}
             {sbTab === "files" && (
@@ -291,19 +337,26 @@ export function App() {
         )}
       </div>
 
-      {needResume && root && (
-        <ResumeOnboard
-          onSubmit={onSubmitResume}
-          onSkip={() => setNeedResume(false)}
-        />
-      )}
+      <TaskStatusBar
+        todayApplied={todayApplied}
+        dailyCap={settings.dailyCap}
+        candidates={candidates}
+        content={{
+          ...contentStatus,
+          tier: contentTier,
+          model: contentTier === "deep" ? settings.modelPro : settings.modelFlash,
+        }}
+        apply={applyStatus}
+        score={scoreStatus}
+      />
 
       {showResume && root && (
-        <ResumeBuilderModal
-          gateway={gateway}
+        <ResumeViewerModal
           root={root}
-          resumeText={resumeText}
-          onClose={() => { setShowResume(false); refreshResume(root); }}
+          onClose={() => {
+            setShowResume(false);
+            refreshResume(root);
+          }}
         />
       )}
 

@@ -148,14 +148,6 @@ export function greetingSystem(instruction?: string): string {
   );
 }
 
-export function resumeExtractSystem(): string {
-  return [
-    "你把用户的简历文本抽取成严格 JSON,字段:",
-    '{ "basics":{"name","headline","phone","email","location","summary"}, "experience":[{"company","role","start","end","bullets":[]}], "education":[{"school","degree","major","start","end"}], "skills":[], "projects":[{"name","desc"}], "links":[{"label","url"}] }',
-    "缺失的字段填空字符串或空数组。bullets 是该段经历的要点数组。只输出 JSON 本体,不要任何解释、不要 markdown 代码围栏。",
-  ].join("\n");
-}
-
 export function greetingUser(args: {
   job: string;
   jd: string;

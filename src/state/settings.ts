@@ -1,5 +1,6 @@
 // 本地设置(localStorage)。M1 阶段 key 存浏览器;包入 Tauri 后迁到系统安全存储 + Rust。
 import type { GatewayConfig } from "../gateway/types";
+import { normalizeApplySafety } from "../lib/applySafety";
 
 export interface Settings {
   dsKey: string; // DeepSeek key(light/deep 均用)
@@ -64,7 +65,7 @@ export const DEFAULT_SETTINGS: Settings = {
   feishuTableId: "tblUzqF9C2Leljof",
   feishuRedirectUri: "http://localhost:14520/feishu/callback",
   feishuUserToken: "",
-  bridgeToken: "job-copilot-local",
+  bridgeToken: "",
 };
 
 export function loadSettings(): Settings {
@@ -89,11 +90,13 @@ function migrate(s: Settings): Settings {
     next.cities = next.city ? [next.city] : [...DEFAULT_SETTINGS.cities];
   if (!Array.isArray(next.jobHistory)) next.jobHistory = [];
   if (typeof next.salary !== "string") next.salary = "";
-  return next;
+  if (next.bridgeToken === "job-copilot-local") next.bridgeToken = "";
+  return { ...next, ...normalizeApplySafety(next) };
 }
 
 export function saveSettings(s: Settings): void {
-  localStorage.setItem(KEY, JSON.stringify(s));
+  const normalized = { ...s, ...normalizeApplySafety(s) };
+  localStorage.setItem(KEY, JSON.stringify(normalized));
 }
 
 /** 由 Settings 组装网关两档配置(均走 DeepSeek)。 */

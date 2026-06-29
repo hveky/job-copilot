@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { Send, Copy, Trash2, MessageSquare } from "lucide-react";
+import { Button } from "../ui";
 import { chat, GatewayError } from "../gateway/client";
 import type { ChatMessage, GatewayConfig } from "../gateway/types";
 import { copilotSystem } from "../prompts/templates";
@@ -62,12 +64,16 @@ export function Copilot(props: {
     <>
       <div className="chat" ref={scrollRef}>
         {msgs.length === 0 && (
-          <div className="hint" style={{ padding: 8 }}>
-            把 HR 发来的消息贴进来,或直接问「怎么约面试时间 / 期望薪资怎么答」。
-            我会给你一段可直接发出去的回复草稿。
-            <br />
-            <br />
-            <span className="tier-pill">默认 DeepSeek Flash · 省</span>
+          <div className="hint flex flex-col gap-3 p-2">
+            <span className="inline-flex items-center gap-2 text-text-2 font-medium">
+              <MessageSquare size={18} strokeWidth={1.75} className="text-accent-strong" />
+              回复助手
+            </span>
+            <span>
+              把 HR 发来的消息贴进来,或直接问「怎么约面试时间 / 期望薪资怎么答」。
+              我会给你一段可直接发出去的回复草稿。
+            </span>
+            <span className="tier-pill w-fit">默认 DeepSeek Flash · 省</span>
           </div>
         )}
         {msgs.map((m, i) => (
@@ -75,12 +81,14 @@ export function Copilot(props: {
             {m.content || (busy && i === msgs.length - 1 ? "思考中…" : "")}
             {m.role === "assistant" && m.content && (
               <div className="copy">
-                <button
-                  className="small ghost"
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={() => navigator.clipboard.writeText(m.content)}
+                  icon={<Copy size={14} strokeWidth={1.75} />}
                 >
                   复制
-                </button>
+                </Button>
               </div>
             )}
           </div>
@@ -101,13 +109,23 @@ export function Copilot(props: {
           }}
         />
         <div className="row">
-          <button className="primary" disabled={busy} onClick={send}>
+          <Button
+            variant="primary"
+            loading={busy}
+            onClick={send}
+            icon={<Send size={16} strokeWidth={1.75} />}
+          >
             {busy ? "生成中…" : "发送"}
-          </button>
+          </Button>
           {msgs.length > 0 && (
-            <button className="ghost small" onClick={() => setMsgs([])}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setMsgs([])}
+              icon={<Trash2 size={14} strokeWidth={1.75} />}
+            >
               清空
-            </button>
+            </Button>
           )}
         </div>
       </div>

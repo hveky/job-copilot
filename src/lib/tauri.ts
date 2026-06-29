@@ -42,6 +42,7 @@ export interface BossJob {
   salary: string;
   company: string;
   tags: string;
+  area?: string;
 }
 
 export interface BossJd {
@@ -86,6 +87,11 @@ export async function listenJobsReceived(
 export async function dataRoot(): Promise<string> {
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<string>("data_root");
+}
+
+export async function bridgeToken(): Promise<string> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<string>("bridge_token");
 }
 
 export async function fsList(root: string): Promise<string[]> {

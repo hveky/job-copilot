@@ -1,12 +1,17 @@
-use std::path::PathBuf;
+use std::io::Read;
+use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use rusqlite::{params, Connection, OptionalExtension};
+use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Listener, Manager};
 
-/// 与 BOSS 扩展约定的共享令牌(请求头 X-Copilot-Token)。两端需一致。
-const BRIDGE_TOKEN: &str = "job-copilot-local";
+/// 与 BOSS 扩展约定的共享令牌文件名(请求头 X-Copilot-Token)。
+const BRIDGE_TOKEN_FILE: &str = ".bridge-token";
 /// 桥接服务监听端口(只绑回环地址,不暴露局域网)。
 const BRIDGE_ADDR: &str = "127.0.0.1:14530";
+const BRIDGE_MAX_BODY_BYTES: u64 = 512 * 1024;
+const BRIDGE_MAX_JOBS: usize = 50;
 
 // 抓取列表:在 BOSS 搜索页注入,等卡片+__TAURI__ 就绪后用 IPC 事件回传。
 // 优先走 BOSS 官方搜索接口(salaryDesc 是明文,绕开列表卡片的字体加密薪资);
@@ -272,19 +277,467 @@ async fn boss_replies(app: tauri::AppHandle) -> Result<String, String> {
     .await
 }
 
+
+// ===== SQLite local records =====
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CandidateJob {
+    id: String,
+    title: String,
+    company: String,
+    salary: String,
+    city: String,
+    region: String,
+    tags: String,
+    href: String,
+    source: String,
+    track: String,
+    direction: String,
+    jd: String,
+    score: Option<i64>,
+    level: String,
+    reason: String,
+    highlights: String,
+    risks: String,
+    score_status: String,
+    created_at: i64,
+    updated_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ApplyRecordDb {
+    id: String,
+    company: String,
+    title: String,
+    applied_at: i64,
+    city: String,
+    region: String,
+    track: String,
+    direction: String,
+    salary: String,
+    href: String,
+    greeting: String,
+    synced: bool,
+    created_at: i64,
+    updated_at: i64,
+}
+
+fn now_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or_default()
+}
+
+fn db_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .or_else(|_| app.path().home_dir().map(|h| h.join("job-copilot")))
+        .map_err(|e| format!("找不到数据目录: {}", e))?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir.join("job-copilot.sqlite"))
+}
+
+fn open_db(app: &tauri::AppHandle) -> Result<Connection, String> {
+    let conn = Connection::open(db_path(app)?).map_err(|e| e.to_string())?;
+    init_db(&conn)?;
+    Ok(conn)
+}
+
+fn init_db(conn: &Connection) -> Result<(), String> {
+    conn.execute_batch(
+        r#"
+        CREATE TABLE IF NOT EXISTS candidate_jobs (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL DEFAULT '',
+            company TEXT NOT NULL DEFAULT '',
+            salary TEXT NOT NULL DEFAULT '',
+            city TEXT NOT NULL DEFAULT '',
+            region TEXT NOT NULL DEFAULT '',
+            tags TEXT NOT NULL DEFAULT '',
+            href TEXT NOT NULL DEFAULT '',
+            source TEXT NOT NULL DEFAULT '',
+            track TEXT NOT NULL DEFAULT '',
+            direction TEXT NOT NULL DEFAULT '',
+            jd TEXT NOT NULL DEFAULT '',
+            score INTEGER,
+            level TEXT NOT NULL DEFAULT '',
+            reason TEXT NOT NULL DEFAULT '',
+            highlights TEXT NOT NULL DEFAULT '',
+            risks TEXT NOT NULL DEFAULT '',
+            score_status TEXT NOT NULL DEFAULT 'pending',
+            created_at INTEGER NOT NULL DEFAULT 0,
+            updated_at INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_candidate_jobs_track ON candidate_jobs(track);
+        CREATE INDEX IF NOT EXISTS idx_candidate_jobs_city ON candidate_jobs(city);
+        CREATE INDEX IF NOT EXISTS idx_candidate_jobs_score_status ON candidate_jobs(score_status);
+
+        CREATE TABLE IF NOT EXISTS apply_records (
+            id TEXT PRIMARY KEY,
+            company TEXT NOT NULL DEFAULT '',
+            title TEXT NOT NULL DEFAULT '',
+            applied_at INTEGER NOT NULL DEFAULT 0,
+            city TEXT NOT NULL DEFAULT '',
+            region TEXT NOT NULL DEFAULT '',
+            track TEXT NOT NULL DEFAULT '',
+            direction TEXT NOT NULL DEFAULT '',
+            salary TEXT NOT NULL DEFAULT '',
+            href TEXT NOT NULL DEFAULT '',
+            greeting TEXT NOT NULL DEFAULT '',
+            synced INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL DEFAULT 0,
+            updated_at INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_apply_records_applied_at ON apply_records(applied_at);
+        CREATE INDEX IF NOT EXISTS idx_apply_records_city ON apply_records(city);
+        CREATE INDEX IF NOT EXISTS idx_apply_records_track ON apply_records(track);
+        "#,
+    )
+    .map_err(|e| e.to_string())
+}
+
+fn candidate_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CandidateJob> {
+    Ok(CandidateJob {
+        id: row.get("id")?,
+        title: row.get("title")?,
+        company: row.get("company")?,
+        salary: row.get("salary")?,
+        city: row.get("city")?,
+        region: row.get("region")?,
+        tags: row.get("tags")?,
+        href: row.get("href")?,
+        source: row.get("source")?,
+        track: row.get("track")?,
+        direction: row.get("direction")?,
+        jd: row.get("jd")?,
+        score: row.get("score")?,
+        level: row.get("level")?,
+        reason: row.get("reason")?,
+        highlights: row.get("highlights")?,
+        risks: row.get("risks")?,
+        score_status: row.get("score_status")?,
+        created_at: row.get("created_at")?,
+        updated_at: row.get("updated_at")?,
+    })
+}
+
+fn apply_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ApplyRecordDb> {
+    Ok(ApplyRecordDb {
+        id: row.get("id")?,
+        company: row.get("company")?,
+        title: row.get("title")?,
+        applied_at: row.get("applied_at")?,
+        city: row.get("city")?,
+        region: row.get("region")?,
+        track: row.get("track")?,
+        direction: row.get("direction")?,
+        salary: row.get("salary")?,
+        href: row.get("href")?,
+        greeting: row.get("greeting")?,
+        synced: row.get::<_, i64>("synced")? != 0,
+        created_at: row.get("created_at")?,
+        updated_at: row.get("updated_at")?,
+    })
+}
+
+fn candidate_select_sql() -> &'static str {
+    "SELECT id,title,company,salary,city,region,tags,href,source,track,direction,jd,score,level,reason,highlights,risks,score_status,created_at,updated_at FROM candidate_jobs"
+}
+
+fn apply_record_select_sql() -> &'static str {
+    "SELECT id,company,title,applied_at,city,region,track,direction,salary,href,greeting,synced,created_at,updated_at FROM apply_records"
+}
+
+fn fill_candidate_defaults(job: &mut CandidateJob) {
+    if job.id.trim().is_empty() {
+        let seed = format!("{}:{}:{}", job.title, job.company, job.href);
+        job.id = format!("job-{:x}", fnv64(&seed));
+    }
+    if job.source.trim().is_empty() {
+        job.source = "boss".to_string();
+    }
+    if job.score_status.trim().is_empty() {
+        job.score_status = "pending".to_string();
+    }
+}
+
+fn fill_apply_record_defaults(record: &mut ApplyRecordDb) {
+    if record.id.trim().is_empty() {
+        let seed = format!("{}:{}:{}", record.title, record.company, record.href);
+        record.id = format!("apply-{:x}", fnv64(&seed));
+    }
+}
+
+fn get_candidates_by_ids(conn: &Connection, ids: &[String]) -> Result<Vec<CandidateJob>, String> {
+    let mut out = Vec::new();
+    for id in ids {
+        let sql = format!("{} WHERE id = ?1", candidate_select_sql());
+        if let Some(row) = conn
+            .query_row(&sql, params![id], candidate_from_row)
+            .optional()
+            .map_err(|e| e.to_string())?
+        {
+            out.push(row);
+        }
+    }
+    Ok(out)
+}
+
+#[tauri::command]
+fn db_upsert_candidate_jobs(
+    app: tauri::AppHandle,
+    jobs: Vec<CandidateJob>,
+) -> Result<Vec<CandidateJob>, String> {
+    let mut conn = open_db(&app)?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let now = now_ms();
+    let mut ids = Vec::new();
+
+    for mut job in jobs {
+        fill_candidate_defaults(&mut job);
+        let created_at = if job.created_at > 0 { job.created_at } else { now };
+        let updated_at = now;
+        tx.execute(
+            r#"
+            INSERT INTO candidate_jobs (
+                id,title,company,salary,city,region,tags,href,source,track,direction,jd,
+                score,level,reason,highlights,risks,score_status,created_at,updated_at
+            ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20)
+            ON CONFLICT(id) DO UPDATE SET
+                title=excluded.title,
+                company=excluded.company,
+                salary=excluded.salary,
+                city=excluded.city,
+                region=excluded.region,
+                tags=excluded.tags,
+                href=excluded.href,
+                source=excluded.source,
+                track=excluded.track,
+                direction=excluded.direction,
+                jd=CASE WHEN excluded.jd <> '' THEN excluded.jd ELSE candidate_jobs.jd END,
+                score=COALESCE(excluded.score, candidate_jobs.score),
+                level=CASE WHEN excluded.level <> '' THEN excluded.level ELSE candidate_jobs.level END,
+                reason=CASE WHEN excluded.reason <> '' THEN excluded.reason ELSE candidate_jobs.reason END,
+                highlights=CASE WHEN excluded.highlights <> '' THEN excluded.highlights ELSE candidate_jobs.highlights END,
+                risks=CASE WHEN excluded.risks <> '' THEN excluded.risks ELSE candidate_jobs.risks END,
+                score_status=CASE WHEN excluded.score_status <> '' THEN excluded.score_status ELSE candidate_jobs.score_status END,
+                updated_at=excluded.updated_at
+            "#,
+            params![
+                &job.id,
+                &job.title,
+                &job.company,
+                &job.salary,
+                &job.city,
+                &job.region,
+                &job.tags,
+                &job.href,
+                &job.source,
+                &job.track,
+                &job.direction,
+                &job.jd,
+                job.score,
+                &job.level,
+                &job.reason,
+                &job.highlights,
+                &job.risks,
+                &job.score_status,
+                created_at,
+                updated_at,
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+        ids.push(job.id.clone());
+    }
+    tx.commit().map_err(|e| e.to_string())?;
+    get_candidates_by_ids(&conn, &ids)
+}
+
+#[tauri::command]
+fn db_list_candidate_jobs(app: tauri::AppHandle) -> Result<Vec<CandidateJob>, String> {
+    let conn = open_db(&app)?;
+    let sql = format!("{} ORDER BY updated_at DESC LIMIT 300", candidate_select_sql());
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], candidate_from_row)
+        .map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.map_err(|e| e.to_string())?);
+    }
+    Ok(out)
+}
+
+#[tauri::command]
+fn db_update_candidate_score(
+    app: tauri::AppHandle,
+    id: String,
+    score: i64,
+    level: String,
+    reason: String,
+    highlights: String,
+    risks: String,
+    score_status: String,
+) -> Result<CandidateJob, String> {
+    let conn = open_db(&app)?;
+    conn.execute(
+        "UPDATE candidate_jobs SET score=?2, level=?3, reason=?4, highlights=?5, risks=?6, score_status=?7, updated_at=?8 WHERE id=?1",
+        params![id, score, level, reason, highlights, risks, score_status, now_ms()],
+    )
+    .map_err(|e| e.to_string())?;
+    let sql = format!("{} WHERE id = ?1", candidate_select_sql());
+    conn.query_row(&sql, params![id], candidate_from_row)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn db_update_candidate_jd(
+    app: tauri::AppHandle,
+    id: String,
+    jd: String,
+) -> Result<CandidateJob, String> {
+    let conn = open_db(&app)?;
+    conn.execute(
+        "UPDATE candidate_jobs SET jd=?2, updated_at=?3 WHERE id=?1",
+        params![id, jd, now_ms()],
+    )
+    .map_err(|e| e.to_string())?;
+    let sql = format!("{} WHERE id = ?1", candidate_select_sql());
+    conn.query_row(&sql, params![id], candidate_from_row)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn db_add_apply_record(
+    app: tauri::AppHandle,
+    mut record: ApplyRecordDb,
+) -> Result<ApplyRecordDb, String> {
+    fill_apply_record_defaults(&mut record);
+    let conn = open_db(&app)?;
+    let now = now_ms();
+    let created_at = if record.created_at > 0 { record.created_at } else { now };
+    let updated_at = now;
+    conn.execute(
+        r#"
+        INSERT INTO apply_records (
+            id,company,title,applied_at,city,region,track,direction,salary,href,greeting,synced,created_at,updated_at
+        ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14)
+        ON CONFLICT(id) DO UPDATE SET
+            company=excluded.company,
+            title=excluded.title,
+            applied_at=excluded.applied_at,
+            city=excluded.city,
+            region=excluded.region,
+            track=excluded.track,
+            direction=excluded.direction,
+            salary=excluded.salary,
+            href=excluded.href,
+            greeting=excluded.greeting,
+            synced=excluded.synced,
+            updated_at=excluded.updated_at
+        "#,
+        params![
+            &record.id,
+            &record.company,
+            &record.title,
+            record.applied_at,
+            &record.city,
+            &record.region,
+            &record.track,
+            &record.direction,
+            &record.salary,
+            &record.href,
+            &record.greeting,
+            if record.synced { 1 } else { 0 },
+            created_at,
+            updated_at,
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+    let sql = format!("{} WHERE id = ?1", apply_record_select_sql());
+    conn.query_row(&sql, params![record.id], apply_record_from_row)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn db_list_apply_records(app: tauri::AppHandle) -> Result<Vec<ApplyRecordDb>, String> {
+    let conn = open_db(&app)?;
+    let sql = format!("{} ORDER BY applied_at DESC, updated_at DESC LIMIT 1000", apply_record_select_sql());
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], apply_record_from_row)
+        .map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.map_err(|e| e.to_string())?);
+    }
+    Ok(out)
+}
+
+#[tauri::command]
+fn db_migrate_apply_records(
+    app: tauri::AppHandle,
+    records: Vec<ApplyRecordDb>,
+) -> Result<usize, String> {
+    let mut count = 0;
+    for record in records {
+        db_add_apply_record(app.clone(), record)?;
+        count += 1;
+    }
+    Ok(count)
+}
 // ===== 文件 agent:本地求职工作区读写(路径安全) =====
 fn safe_join(root: &str, rel: &str) -> Result<PathBuf, String> {
-    if rel.contains("..") {
-        return Err("路径不能包含 ..".into());
-    }
-    let root_p = PathBuf::from(root);
+    let root_p = PathBuf::from(root)
+        .canonicalize()
+        .map_err(|_| "工作区目录无效".to_string())?;
     if !root_p.is_dir() {
         return Err("工作区目录无效".into());
     }
-    let rel = rel.trim_start_matches(['/', '\\']);
-    Ok(root_p.join(rel))
-}
 
+    let rel_p = Path::new(rel);
+    if rel_p.is_absolute() {
+        return Err("路径必须是工作区内的相对路径".into());
+    }
+
+    let mut clean = PathBuf::new();
+    for component in rel_p.components() {
+        match component {
+            Component::Normal(part) => clean.push(part),
+            Component::CurDir => {}
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                return Err("路径不能跳出工作区".into());
+            }
+        }
+    }
+    if clean.as_os_str().is_empty() {
+        return Err("路径不能为空".into());
+    }
+
+    let target = root_p.join(clean);
+    if let Some(parent) = target.parent() {
+        if parent.exists() {
+            let parent_canon = parent
+                .canonicalize()
+                .map_err(|e| format!("路径校验失败: {}", e))?;
+            if !parent_canon.starts_with(&root_p) {
+                return Err("路径不能跳出工作区".into());
+            }
+        }
+    }
+    if target.exists() {
+        let target_canon = target
+            .canonicalize()
+            .map_err(|e| format!("路径校验失败: {}", e))?;
+        if !target_canon.starts_with(&root_p) {
+            return Err("路径不能跳出工作区".into());
+        }
+    }
+    Ok(target)
+}
 /// 列出工作区下的文本文件(相对路径),跳过重目录。
 #[tauri::command]
 fn fs_list(root: String) -> Result<Vec<String>, String> {
@@ -335,6 +788,7 @@ fn data_root(app: tauri::AppHandle) -> Result<String, String> {
     for sub in ["preps", "talk", "jds", "resumes"] {
         std::fs::create_dir_all(root.join(sub)).map_err(|e| e.to_string())?;
     }
+    let _ = ensure_bridge_token(&root)?;
     Ok(root.to_string_lossy().to_string())
 }
 
@@ -612,6 +1066,80 @@ fn write_inbox_job(root: &PathBuf, job: &serde_json::Value) -> Result<String, St
     Ok(rel)
 }
 
+fn fnv64(s: &str) -> u64 {
+    let mut h: u64 = 1469598103934665603;
+    for b in s.bytes() {
+        h ^= b as u64;
+        h = h.wrapping_mul(1099511628211);
+    }
+    h
+}
+
+fn make_bridge_token(root: &Path) -> String {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or_default();
+    let seed = format!("{}:{}:{}", root.display(), std::process::id(), nanos);
+    format!("qzc-{:x}-{:x}", nanos, fnv64(&seed))
+}
+
+fn ensure_bridge_token(root: &Path) -> Result<String, String> {
+    std::fs::create_dir_all(root).map_err(|e| e.to_string())?;
+    let p = root.join(BRIDGE_TOKEN_FILE);
+    if let Ok(token) = std::fs::read_to_string(&p) {
+        let token = token.trim().to_string();
+        if !token.is_empty() {
+            return Ok(token);
+        }
+    }
+    let token = make_bridge_token(root);
+    std::fs::write(&p, &token).map_err(|e| e.to_string())?;
+    Ok(token)
+}
+
+#[tauri::command]
+fn bridge_token(app: tauri::AppHandle) -> Result<String, String> {
+    let home = app
+        .path()
+        .home_dir()
+        .map_err(|e| format!("找不到用户主目录: {}", e))?;
+    ensure_bridge_token(&home.join("job-copilot"))
+}
+
+fn bridge_origin_allowed(origin: &str) -> bool {
+    origin == "null"
+        || origin.starts_with("tauri://")
+        || origin.starts_with("http://localhost:")
+        || origin.starts_with("http://127.0.0.1:")
+        || origin == "https://www.zhipin.com"
+        || origin.ends_with(".zhipin.com")
+        || origin.starts_with("chrome-extension://")
+        || origin.starts_with("moz-extension://")
+}
+
+fn request_origin(request: &tiny_http::Request) -> Option<String> {
+    request
+        .headers()
+        .iter()
+        .find(|h| h.field.equiv("Origin"))
+        .map(|h| h.value.as_str().to_string())
+}
+
+fn request_token_ok(request: &tiny_http::Request, token: &str) -> bool {
+    request
+        .headers()
+        .iter()
+        .any(|h| h.field.equiv("X-Copilot-Token") && h.value.as_str() == token)
+}
+
+fn request_content_length(request: &tiny_http::Request) -> Option<u64> {
+    request
+        .headers()
+        .iter()
+        .find(|h| h.field.equiv("Content-Length"))
+        .and_then(|h| h.value.as_str().parse::<u64>().ok())
+}
 /// 启动本地桥接 HTTP 服务(独立线程):接收 BOSS 扩展推送的岗位,落到 jds/,并 emit 通知前端刷新。
 /// 失败(如端口被占用)仅告警,不阻塞主程序——收件箱退化为手动粘贴 JD,原流程不受影响。
 fn start_bridge_server(app: tauri::AppHandle) {
@@ -629,10 +1157,24 @@ fn start_bridge_server(app: tauri::AppHandle) {
             Ok(h) => h.join("job-copilot"),
             Err(_) => return,
         };
+        let bridge_token = match ensure_bridge_token(&root) {
+            Ok(t) => t,
+            Err(e) => {
+                log::warn!("桥接令牌初始化失败,已跳过: {}", e);
+                return;
+            }
+        };
 
-        let cors = |mut resp: tiny_http::Response<std::io::Cursor<Vec<u8>>>| {
+        let add_cors = |mut resp: tiny_http::Response<std::io::Cursor<Vec<u8>>>, origin: Option<&str>| {
+            if let Some(origin) = origin.filter(|o| bridge_origin_allowed(o)) {
+                if let Ok(h) = tiny_http::Header::from_bytes(
+                    &b"Access-Control-Allow-Origin"[..],
+                    origin.as_bytes(),
+                ) {
+                    resp.add_header(h);
+                }
+            }
             for (k, v) in [
-                ("Access-Control-Allow-Origin", "*"),
                 ("Access-Control-Allow-Headers", "content-type, x-copilot-token"),
                 ("Access-Control-Allow-Methods", "POST, OPTIONS"),
             ] {
@@ -652,32 +1194,77 @@ fn start_bridge_server(app: tauri::AppHandle) {
         };
 
         for mut request in server.incoming_requests() {
+            let origin = request_origin(&request);
+            let origin_allowed = origin
+                .as_deref()
+                .map(bridge_origin_allowed)
+                .unwrap_or(true);
+
             if request.method() == &tiny_http::Method::Options {
-                let _ = request
-                    .respond(cors(tiny_http::Response::from_string("").with_status_code(204)));
+                let status = if origin_allowed { 204 } else { 403 };
+                let _ = request.respond(add_cors(
+                    tiny_http::Response::from_string("").with_status_code(status),
+                    origin.as_deref(),
+                ));
+                continue;
+            }
+            if !origin_allowed {
+                let _ = request.respond(add_cors(
+                    json_resp(403, r#"{"ok":false,"error":"origin"}"#),
+                    origin.as_deref(),
+                ));
                 continue;
             }
             if request.method() != &tiny_http::Method::Post {
-                let _ = request.respond(cors(json_resp(405, "{\"ok\":false,\"error\":\"method\"}")));
+                let _ = request.respond(add_cors(
+                    json_resp(405, r#"{"ok":false,"error":"method"}"#),
+                    origin.as_deref(),
+                ));
                 continue;
             }
-            let token_ok = request
-                .headers()
-                .iter()
-                .any(|h| h.field.equiv("X-Copilot-Token") && h.value.as_str() == BRIDGE_TOKEN);
-            if !token_ok {
-                let _ = request.respond(cors(json_resp(401, "{\"ok\":false,\"error\":\"token\"}")));
+            if !request_token_ok(&request, &bridge_token) {
+                let _ = request.respond(add_cors(
+                    json_resp(401, r#"{"ok":false,"error":"token"}"#),
+                    origin.as_deref(),
+                ));
+                continue;
+            }
+            if request_content_length(&request)
+                .map(|n| n > BRIDGE_MAX_BODY_BYTES)
+                .unwrap_or(false)
+            {
+                let _ = request.respond(add_cors(
+                    json_resp(413, r#"{"ok":false,"error":"too_large"}"#),
+                    origin.as_deref(),
+                ));
                 continue;
             }
             let mut body = String::new();
-            if request.as_reader().read_to_string(&mut body).is_err() {
-                let _ = request.respond(cors(json_resp(400, "{\"ok\":false,\"error\":\"body\"}")));
+            let read_res = request
+                .as_reader()
+                .take(BRIDGE_MAX_BODY_BYTES + 1)
+                .read_to_string(&mut body);
+            if read_res.is_err() {
+                let _ = request.respond(add_cors(
+                    json_resp(400, r#"{"ok":false,"error":"body"}"#),
+                    origin.as_deref(),
+                ));
+                continue;
+            }
+            if body.len() as u64 > BRIDGE_MAX_BODY_BYTES {
+                let _ = request.respond(add_cors(
+                    json_resp(413, r#"{"ok":false,"error":"too_large"}"#),
+                    origin.as_deref(),
+                ));
                 continue;
             }
             let parsed: serde_json::Value = match serde_json::from_str(&body) {
                 Ok(v) => v,
                 Err(_) => {
-                    let _ = request.respond(cors(json_resp(400, "{\"ok\":false,\"error\":\"json\"}")));
+                    let _ = request.respond(add_cors(
+                        json_resp(400, r#"{"ok":false,"error":"json"}"#),
+                        origin.as_deref(),
+                    ));
                     continue;
                 }
             };
@@ -686,6 +1273,13 @@ fn start_bridge_server(app: tauri::AppHandle) {
                 .and_then(|v| v.as_array())
                 .cloned()
                 .unwrap_or_default();
+            if jobs.len() > BRIDGE_MAX_JOBS {
+                let _ = request.respond(add_cors(
+                    json_resp(413, r#"{"ok":false,"error":"too_many_jobs"}"#),
+                    origin.as_deref(),
+                ));
+                continue;
+            }
             let mut written = 0;
             for job in &jobs {
                 match write_inbox_job(&root, job) {
@@ -694,10 +1288,10 @@ fn start_bridge_server(app: tauri::AppHandle) {
                 }
             }
             let _ = app.emit("jobs-received", written);
-            let _ = request.respond(cors(json_resp(
-                200,
-                &format!("{{\"ok\":true,\"written\":{}}}", written),
-            )));
+            let _ = request.respond(add_cors(
+                json_resp(200, &format!(r#"{{"ok":true,"written":{}}}"#, written)),
+                origin.as_deref(),
+            ));
         }
     });
 }
@@ -724,12 +1318,20 @@ pub fn run() {
             boss_fetch_jd,
             boss_apply,
             boss_replies,
+            db_upsert_candidate_jobs,
+            db_list_candidate_jobs,
+            db_update_candidate_score,
+            db_update_candidate_jd,
+            db_add_apply_record,
+            db_list_apply_records,
+            db_migrate_apply_records,
             fs_list,
             fs_read,
             fs_write,
             fs_write_bytes,
             fs_read_bytes,
             data_root,
+            bridge_token,
             feishu_sync,
             feishu_oauth
         ])

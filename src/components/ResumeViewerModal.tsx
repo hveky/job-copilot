@@ -183,7 +183,7 @@ export function ResumeViewerModal(props: { root: string; onClose: () => void; on
         setDefaultResumePng(savedPaths[0]);
       }
       const importNotice = buildResumeImportNotice({
-        pages: savedPaths.length,
+        savedPaths,
         extractedText,
         textWritten,
       });

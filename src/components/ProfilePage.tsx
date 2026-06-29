@@ -6,6 +6,7 @@ import { InstructionPanel } from "./InstructionPanel";
 export function ProfilePage(props: {
   resumeText: string;
   resumeImageCount: number;
+  resumeImages: { path: string; name: string; url: string }[];
   resumeImportNotice?: string;
   instruction: string;
   gateway: GatewayConfig;
@@ -41,6 +42,46 @@ export function ProfilePage(props: {
             <div className="rounded border border-dashed border-border bg-[#F8FAFC] p-6 text-[13px] leading-6 text-text-2">
               暂未读取到简历。可通过上方按钮整理或导入简历，保存后会自动用于 AI 评分与生成。
             </div>
+          )}
+
+          {props.resumeImageCount > 0 && (
+            <section className="mt-4 rounded border border-border bg-[#F8FAFC] p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="m-0 text-[14px] font-semibold leading-5 text-text">已保存的简历图</h3>
+                  <p className="m-0 text-[12px] leading-5 text-text-2">
+                    共 {props.resumeImageCount} 张 PDF 页面图，保存在 resumes/，用于投递附图。
+                  </p>
+                </div>
+                <Button variant="secondary" size="sm" onClick={props.onOpenResume}>管理</Button>
+              </div>
+              {props.resumeImages.length > 0 ? (
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  {props.resumeImages.slice(0, 6).map((image) => (
+                    <button
+                      key={image.path}
+                      type="button"
+                      className="group min-w-0 rounded border border-border bg-white p-2 text-left transition-colors hover:border-accent"
+                      onClick={props.onOpenResume}
+                      title={image.path}
+                    >
+                      <img
+                        src={image.url}
+                        alt={image.name}
+                        className="h-32 w-full rounded border border-border bg-white object-contain"
+                      />
+                      <span className="mt-2 block truncate text-[12px] leading-5 text-text-2 group-hover:text-accent-strong">
+                        {image.name}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded border border-dashed border-border bg-white p-3 text-[12px] leading-5 text-text-2">
+                  已检测到简历图文件，但缩略图读取失败。可点击管理查看文件状态。
+                </div>
+              )}
+            </section>
           )}
         </div>
       </section>

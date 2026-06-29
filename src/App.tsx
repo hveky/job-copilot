@@ -27,17 +27,24 @@ import {
   bridgeToken,
   dataRoot,
   fsList,
+  fsReadBytes,
   isDesktop,
   listenJobsReceived,
   readResume,
 } from "./lib/tauri";
-import { countResumeImages } from "./lib/resume";
+import { bytesToDataUrl, countResumeImages } from "./lib/resume";
 import { sidebar as SB } from "./design/tokens";
 import { TaskStatusBar, type ApplyTaskStatus, type ContentTaskStatus } from "./components/TaskStatusBar";
 import type { Tier } from "./gateway/types";
 import type { ScoreProgress } from "./lib/jobWorkflow";
 
 type SbTab = "copilot" | "files";
+
+interface ResumeImagePreview {
+  path: string;
+  name: string;
+  url: string;
+}
 
 const SB_TABS = [
   { key: "copilot" as const, label: "回复助手", icon: <MessageSquare size={16} strokeWidth={1.75} /> },
@@ -91,6 +98,7 @@ export function App() {
   const [root, setRoot] = useState("");
   const [resumeText, setResumeText] = useState("");
   const [resumeImgCount, setResumeImgCount] = useState(0);
+  const [resumeImages, setResumeImages] = useState<ResumeImagePreview[]>([]);
   const [resumeImportNotice, setResumeImportNotice] = useState("");
   const [fileToOpen, setFileToOpen] = useState("");
   const [inboxKey, setInboxKey] = useState(0);
@@ -104,15 +112,31 @@ export function App() {
     if (!r) {
       setResumeText("");
       setResumeImgCount(0);
+      setResumeImages([]);
       return 0;
     }
     try {
       const [{ text, count }, files] = await Promise.all([readResume(r), fsList(r)]);
+      const imagePaths = files.filter(
+        (p) => p.startsWith("resumes/") && p.toLowerCase().endsWith(".png"),
+      );
+      const images: ResumeImagePreview[] = [];
+      for (const p of imagePaths) {
+        try {
+          const bytes = await fsReadBytes(r, p);
+          images.push({ path: p, name: p.replace(/^resumes\//, ""), url: bytesToDataUrl(bytes) });
+        } catch {
+          /* skip unreadable image previews */
+        }
+      }
+      images.sort((a, b) => a.name.localeCompare(b.name, "zh", { numeric: true }));
       setResumeText(text);
       setResumeImgCount(countResumeImages(files));
+      setResumeImages(images);
       return count;
     } catch {
       setResumeImgCount(0);
+      setResumeImages([]);
       return 0;
     }
   }
@@ -289,6 +313,7 @@ export function App() {
             <ProfilePage
               resumeText={resumeText}
               resumeImageCount={resumeImgCount}
+              resumeImages={resumeImages}
               resumeImportNotice={resumeImportNotice}
               instruction={settings.instruction}
               gateway={gateway}

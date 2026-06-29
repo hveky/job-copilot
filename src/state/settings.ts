@@ -1,6 +1,7 @@
 // 本地设置(localStorage)。M1 阶段 key 存浏览器;包入 Tauri 后迁到系统安全存储 + Rust。
 import type { GatewayConfig } from "../gateway/types";
 import { normalizeApplySafety } from "../lib/applySafety";
+import { BUILTIN_DS } from "../config/deepseek";
 
 export interface Settings {
   dsKey: string; // DeepSeek key(light/deep 均用)
@@ -28,6 +29,7 @@ export interface Settings {
   feishuRedirectUri: string; // OAuth 重定向(需在飞书应用后台登记)
   feishuUserToken: string; // 飞书账号授权后的 user_access_token
   bridgeToken: string; // 与 BOSS 扩展约定的入站推送令牌(X-Copilot-Token)
+  disclaimerAccepted: boolean; // 已确认首次免责声明
 }
 
 const KEY = "qzc.settings.v1";
@@ -66,6 +68,7 @@ export const DEFAULT_SETTINGS: Settings = {
   feishuRedirectUri: "http://localhost:14520/feishu/callback",
   feishuUserToken: "",
   bridgeToken: "",
+  disclaimerAccepted: false,
 };
 
 export function loadSettings(): Settings {
@@ -99,18 +102,20 @@ export function saveSettings(s: Settings): void {
   localStorage.setItem(KEY, JSON.stringify(normalized));
 }
 
-/** 由 Settings 组装网关两档配置(均走 DeepSeek)。 */
+/** 由 Settings 组装网关两档配置(均走 DeepSeek)。用户没填自己的 Key 时回退到内置公益 Key。 */
 export function toGatewayConfig(s: Settings): GatewayConfig {
+  const apiKey = s.dsKey || BUILTIN_DS.key;
+  const baseUrl = s.dsBaseUrl || BUILTIN_DS.baseUrl;
   return {
     light: {
-      baseUrl: s.dsBaseUrl,
-      apiKey: s.dsKey,
+      baseUrl,
+      apiKey,
       model: s.modelFlash,
       authStyle: "x-api-key",
     },
     deep: {
-      baseUrl: s.dsBaseUrl,
-      apiKey: s.dsKey,
+      baseUrl,
+      apiKey,
       model: s.modelPro,
       authStyle: "x-api-key",
     },

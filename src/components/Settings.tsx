@@ -5,6 +5,7 @@ import {
   Bot,
   ShieldCheck,
   Database,
+  Heart,
   Info,
   KeyRound,
   CheckCircle2,
@@ -15,11 +16,13 @@ import { toGatewayConfig } from "../state/settings";
 import { chat } from "../gateway/client";
 import { feishuOAuth } from "../lib/tauri";
 import { BUILTIN_FEISHU, hasBuiltinFeishu } from "../config/feishu";
+import { hasBuiltinDs } from "../config/deepseek";
 import { normalizeApplySafety } from "../lib/applySafety";
-import { Modal, Tabs, Field, SecretInput, Slider, StatusPill, Button } from "../ui";
+import { Modal, Tabs, Field, SecretInput, Slider, StatusPill, Button, Card } from "../ui";
 import type { TabItem } from "../ui";
+import wechatQr from "../assets/wechat-qr.png";
 
-type Section = "model" | "feishu" | "boss" | "safety" | "storage";
+type Section = "model" | "feishu" | "boss" | "safety" | "storage" | "about";
 
 const SECTIONS: TabItem<Section>[] = [
   { key: "model", label: "模型配置", icon: <Cpu size={16} strokeWidth={1.75} /> },
@@ -27,6 +30,7 @@ const SECTIONS: TabItem<Section>[] = [
   { key: "boss", label: "BOSS 扩展", icon: <Bot size={16} strokeWidth={1.75} /> },
   { key: "safety", label: "投递安全", icon: <ShieldCheck size={16} strokeWidth={1.75} /> },
   { key: "storage", label: "本地存储", icon: <Database size={16} strokeWidth={1.75} /> },
+  { key: "about", label: "关于/赞助", icon: <Heart size={16} strokeWidth={1.75} /> },
 ];
 
 function two(n: number) {
@@ -70,7 +74,7 @@ export function SettingsModal(props: {
   }
 
   async function testConnection() {
-    if (!s.dsKey.trim()) {
+    if (!s.dsKey.trim() && !hasBuiltinDs()) {
       setTestNote("请先填 DeepSeek API Key。");
       return;
     }
@@ -109,16 +113,20 @@ export function SettingsModal(props: {
   const health = (
     <div className="flex flex-wrap gap-2 px-5 py-2.5 bg-surface-2 border-b border-border">
       <StatusPill
-        tone={s.dsKey ? "ok" : "warn"}
+        tone={s.dsKey || hasBuiltinDs() ? "ok" : "warn"}
         icon={
-          s.dsKey ? (
+          s.dsKey || hasBuiltinDs() ? (
             <CheckCircle2 size={13} strokeWidth={2} />
           ) : (
             <AlertTriangle size={13} strokeWidth={2} />
           )
         }
       >
-        {s.dsKey ? "DeepSeek 已配置" : "DeepSeek 未配置"}
+        {s.dsKey
+          ? "DeepSeek 已配置"
+          : hasBuiltinDs()
+            ? "已内置公益 Key"
+            : "DeepSeek 未配置"}
       </StatusPill>
       <StatusPill tone={s.feishuUserToken ? "ok" : "neutral"}>
         {s.feishuUserToken ? "飞书已授权" : "飞书未授权"}
@@ -137,6 +145,7 @@ export function SettingsModal(props: {
     boss: { title: "BOSS 扩展接入", desc: "查看本机接收地址和扩展对接令牌。" },
     safety: { title: "投递安全", desc: "控制单日上限与自动化间隔，降低风控风险。" },
     storage: { title: "本地存储", desc: "查看设置、文件和密钥的本地保存策略。" },
+    about: { title: "关于 / 赞助", desc: "这个项目对你有帮助的话，欢迎请作者喝杯可乐。" },
   };
 
   const footer = (
@@ -196,11 +205,17 @@ export function SettingsModal(props: {
                 <SecretInput
                   value={s.dsKey}
                   onChange={(v) => set("dsKey", v)}
-                  placeholder="sk-..."
+                  placeholder={hasBuiltinDs() ? "已内置公益 Key（可留空）" : "sk-..."}
                   onTest={testConnection}
                   testing={testing}
                 />
               </Field>
+              {hasBuiltinDs() && !s.dsKey && (
+                <div className="hint inline-flex items-center gap-1 text-ok">
+                  <CheckCircle2 size={14} strokeWidth={1.75} />
+                  已内置公益 Key，可直接使用；也可填自己的 Key 覆盖。
+                </div>
+              )}
               {testNote === "ok" && (
                 <div className="hint inline-flex items-center gap-1 text-ok">
                   <CheckCircle2 size={14} strokeWidth={1.75} /> 连接成功
@@ -381,11 +396,27 @@ export function SettingsModal(props: {
               </div>
             </div>
           )}
+          {section === "about" && (
+            <Card
+              title="如果帮到你的话请我喝杯可乐"
+              description="本项目免费、开源，仅作求职辅助。你的支持是作者持续维护的动力 ❤️"
+              icon={<Heart size={18} strokeWidth={1.75} />}
+            >
+              <div className="flex flex-col items-center gap-2 py-2">
+                <img
+                  src={wechatQr}
+                  alt="微信收款码"
+                  className="w-[220px] rounded border border-border"
+                />
+              </div>
+            </Card>
+          )}
             </div>
+            {section !== "about" && (
             <aside className="rounded border border-border bg-surface-3 p-3 text-aux text-text-2">
               <div className="mb-2 text-[12px] font-semibold text-text">配置摘要</div>
               <div className="grid gap-2">
-                <div className="flex justify-between gap-3"><span>DeepSeek</span><strong className="text-text">{s.dsKey ? "已配置" : "未配置"}</strong></div>
+                <div className="flex justify-between gap-3"><span>DeepSeek</span><strong className="text-text">{s.dsKey ? "已配置" : hasBuiltinDs() ? "公益内置" : "未配置"}</strong></div>
                 <div className="flex justify-between gap-3"><span>飞书</span><strong className="text-text">{s.feishuUserToken ? "已授权" : "未授权"}</strong></div>
                 <div className="flex justify-between gap-3"><span>扩展令牌</span><strong className="text-text">{s.bridgeToken ? "已生成" : "待生成"}</strong></div>
                 <div className="flex justify-between gap-3"><span>单日上限</span><strong className="text-text">{s.dailyCap} 条</strong></div>
@@ -397,6 +428,7 @@ export function SettingsModal(props: {
                 </div>
               )}
             </aside>
+            )}
           </div>
         </div>
       </div>

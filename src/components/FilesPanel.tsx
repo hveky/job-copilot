@@ -73,6 +73,10 @@ interface TreeNode {
   children: TreeNode[];
 }
 
+function isTextWorkspacePath(path: string): boolean {
+  const lower = path.toLowerCase();
+  return lower.endsWith(".md") || lower.endsWith(".txt") || lower.endsWith(".json");
+}
 // 始终展示的基础文件夹（即使为空）
 const BASE_DIRS = ["resumes", "preps", "talk"];
 
@@ -185,7 +189,7 @@ export function FilesPanel(props: {
   async function refresh() {
     setErr("");
     try {
-      const list = await fsList(root);
+      const list = (await fsList(root)).filter(isTextWorkspacePath);
       setFiles(list);
       // 默认展开基础文件夹 + 任何含文件的顶层文件夹
       const top = new Set<string>(BASE_DIRS);
@@ -290,7 +294,7 @@ export function FilesPanel(props: {
           let out = "";
           try {
             if (tu.name === "list_files") {
-              out = (await fsList(root)).join("\n") || "(空)";
+              out = (await fsList(root)).filter(isTextWorkspacePath).join("\n") || "(空)";
               setLog((l) => [...l, { kind: "tool", text: "📂 列出文件" }]);
             } else if (tu.name === "read_file") {
               out = await fsRead(root, tu.input.path);

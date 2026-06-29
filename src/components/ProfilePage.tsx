@@ -14,6 +14,7 @@ export function ProfilePage(props: {
   onOpenResume: () => void;
 }) {
   const hasResumeText = props.resumeText.trim().length > 0;
+  const hasResumeImages = props.resumeImageCount > 0;
 
   return (
     <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(360px,0.9fr)_minmax(520px,1.3fr)]">
@@ -22,7 +23,7 @@ export function ProfilePage(props: {
           <FileText size={18} strokeWidth={1.75} className="text-accent-strong" />
           <div className="min-w-0 flex-1">
             <h2 className="m-0 text-[16px] font-bold leading-6 text-text">个人简历</h2>
-            <p className="m-0 text-[12px] leading-5 text-text-2">用于岗位评分、内容包和回复助手的个人背景来源。</p>
+            <p className="m-0 text-[12px] leading-5 text-text-2">视觉简历用于查看与投递附图，AI 可读文本用于岗位评分、内容包和回复助手。</p>
           </div>
           <Button variant="secondary" size="sm" onClick={props.onOpenResume}>查看简历</Button>
         </header>
@@ -32,23 +33,12 @@ export function ProfilePage(props: {
               {props.resumeImportNotice}
             </div>
           )}
-          {hasResumeText ? (
-            <pre className="m-0 whitespace-pre-wrap rounded border border-border bg-[#F8FAFC] p-4 text-[13px] leading-6 text-text">{props.resumeText}</pre>
-          ) : props.resumeImageCount > 0 ? (
-            <div className="rounded border border-border bg-[#F8FAFC] p-6 text-[13px] leading-6 text-text-2">
-              已导入 {props.resumeImageCount} 张简历图（用于投递附图）。如需 AI 评分，请整理或导入文本型 PDF/Markdown。
-            </div>
-          ) : (
-            <div className="rounded border border-dashed border-border bg-[#F8FAFC] p-6 text-[13px] leading-6 text-text-2">
-              暂未读取到简历。可通过上方按钮整理或导入简历，保存后会自动用于 AI 评分与生成。
-            </div>
-          )}
 
-          {props.resumeImageCount > 0 && (
-            <section className="mt-4 rounded border border-border bg-[#F8FAFC] p-4">
+          {hasResumeImages ? (
+            <section className="rounded border border-border bg-[#F8FAFC] p-4">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div>
-                  <h3 className="m-0 text-[14px] font-semibold leading-5 text-text">已保存的简历图</h3>
+                  <h3 className="m-0 text-[14px] font-semibold leading-5 text-text">视觉简历预览</h3>
                   <p className="m-0 text-[12px] leading-5 text-text-2">
                     共 {props.resumeImageCount} 张 PDF 页面图，保存在 resumes/，用于投递附图。
                   </p>
@@ -68,7 +58,7 @@ export function ProfilePage(props: {
                       <img
                         src={image.url}
                         alt={image.name}
-                        className="h-32 w-full rounded border border-border bg-white object-contain"
+                        className="h-36 w-full rounded border border-border bg-white object-contain"
                       />
                       <span className="mt-2 block truncate text-[12px] leading-5 text-text-2 group-hover:text-accent-strong">
                         {image.name}
@@ -81,6 +71,22 @@ export function ProfilePage(props: {
                   已检测到简历图文件，但缩略图读取失败。可点击管理查看文件状态。
                 </div>
               )}
+            </section>
+          ) : !hasResumeText ? (
+            <div className="rounded border border-dashed border-border bg-[#F8FAFC] p-6 text-[13px] leading-6 text-text-2">
+              暂未读取到简历。可通过上方按钮整理或导入简历，保存后会自动用于 AI 评分与生成。
+            </div>
+          ) : null}
+
+          {hasResumeText && (
+            <section className={hasResumeImages ? "mt-4" : ""}>
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="m-0 text-[14px] font-semibold leading-5 text-text">AI 可读文本</h3>
+                  <p className="m-0 text-[12px] leading-5 text-text-2">从 PDF 抽取或手动整理，用于 AI 评分与生成；不作为视觉简历排版预览。</p>
+                </div>
+              </div>
+              <pre className="m-0 whitespace-pre-wrap rounded border border-border bg-[#F8FAFC] p-4 text-[13px] leading-6 text-text">{props.resumeText}</pre>
             </section>
           )}
         </div>

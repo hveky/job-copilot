@@ -125,7 +125,14 @@ export function buildScorePrompt(input: ScorePromptInput): string {
 5. 赛道相关性：投流/增长、跨境电商、AI/Agent、医药/CDM 等赛道是否相关。
 
 输出 JSON schema：
-{"score":0-100整数,"level":"高匹配|中匹配|低匹配","reason":"不超过36个中文字符","highlights":["亮点"],"risks":["风险"]}
+{"score":0-100整数,"level":"高匹配|中匹配|低匹配","reason":"80-140字的分句说明","highlights":["亮点"],"risks":["风险"]}
+
+reason 写作要求（必须做到）：
+- 80-140 个中文字符，分 2-3 句。
+- 第一句：点明最契合的 1-2 个评分维度，并引用简历或 JD 中的具体词/成果作为证据（不要空话）。
+- 第二句：指出主要短板或风险（经验/学历/城市/薪资/赛道任一）。
+- 第三句：给一句明确的投递建议（如「建议优先投递」「可投但需补充XX」「不建议」）。
+highlights 与 risks 各给 1-3 条具体的点（引用真实信息，不要泛泛而谈）。
 
 当前目标：${input.target || "未设置"}
 当前城市：${input.city || "不限"}

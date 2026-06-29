@@ -351,7 +351,7 @@ export function BossPanelV2(props: {
       tier: "light",
       system: "你是求职岗位匹配评分器。必须只返回符合要求的 JSON，不要 Markdown。",
       messages: [{ role: "user", content: buildScorePrompt(scoreInput(job)) }],
-      maxTokens: 420,
+      maxTokens: 900,
     });
     return parseScoreResponse(out);
   }

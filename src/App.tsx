@@ -40,6 +40,14 @@ import type { ScoreProgress } from "./lib/jobWorkflow";
 
 type SbTab = "copilot" | "files";
 
+// 按窗口宽度分档整体缩放 UI（CSS zoom，纯视觉，不影响 innerWidth 的真实像素）。
+function scaleForWidth(w: number): number {
+  if (w < 1280) return 0.9;
+  if (w < 1600) return 1.0;
+  if (w < 1920) return 1.1;
+  return 1.2;
+}
+
 interface ResumeImagePreview {
   path: string;
   name: string;
@@ -90,7 +98,10 @@ export function App() {
       const isNarrow = window.innerWidth < 768;
       setNarrow(isNarrow);
       if (isNarrow) setSidebarOpen(false);
+      const rootEl = document.getElementById("root");
+      if (rootEl) rootEl.style.zoom = String(scaleForWidth(window.innerWidth));
     };
+    onResize();
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);

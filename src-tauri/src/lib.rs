@@ -41,20 +41,33 @@ const SCRAPE_LIST_JS: &str = r#"(function(){
   function viaApi(){
     var qs=new URLSearchParams(location.search);
     var query=qs.get('query')||'';var city=qs.get('city')||'';
-    var api='/wapi/zpgeek/search/joblist.json?scene=1&query='+encodeURIComponent(query)+'&city='+encodeURIComponent(city)+'&page=1&pageSize=30';
-    return fetch(api,{credentials:'include'}).then(function(r){return r.json();}).then(function(j){
-      var list=(j&&j.zpData&&j.zpData.jobList)||[];
-      return list.map(function(it){
-        return {
-          id: it.encryptJobId||'',
-          href: it.encryptJobId?('https://www.zhipin.com/job_detail/'+it.encryptJobId+'.html'):'',
-          title: it.jobName||'',
-          salary: it.salaryDesc||'',
-          company: it.brandName||'',
-          area: it.areaDistrict||'',
-          tags: [].concat(it.jobLabels||[]).join(' · ')
-        };
+    function fetchPage(page){
+      var api='/wapi/zpgeek/search/joblist.json?scene=1&query='+encodeURIComponent(query)+'&city='+encodeURIComponent(city)+'&page='+page+'&pageSize=30';
+      return fetch(api,{credentials:'include'}).then(function(r){return r.json();}).then(function(j){
+        return (j&&j.zpData&&j.zpData.jobList)||[];
+      }).catch(function(){return [];});
+    }
+    // 并发抓取第 1-5 页（每页 30），聚合去重，上限 150。
+    var pages=[1,2,3,4,5].map(fetchPage);
+    return Promise.all(pages).then(function(lists){
+      var seen={},out=[];
+      lists.forEach(function(list){
+        list.forEach(function(it){
+          var id=it.encryptJobId||'';
+          if(id && seen[id]) return;
+          if(id) seen[id]=1;
+          out.push({
+            id: id,
+            href: id?('https://www.zhipin.com/job_detail/'+id+'.html'):'',
+            title: it.jobName||'',
+            salary: it.salaryDesc||'',
+            company: it.brandName||'',
+            area: it.areaDistrict||'',
+            tags: [].concat(it.jobLabels||[]).join(' · ')
+          });
+        });
       });
+      return out.slice(0,150);
     });
   }
   function fallback(){
@@ -738,7 +751,15 @@ fn safe_join(root: &str, rel: &str) -> Result<PathBuf, String> {
     }
     Ok(target)
 }
-/// 列出工作区下的文本文件(相对路径),跳过重目录。
+fn is_listable_workspace_file(name: &str) -> bool {
+    let n = name.to_lowercase();
+    matches!(
+        Path::new(&n).extension().and_then(|ext| ext.to_str()),
+        Some("md" | "txt" | "json" | "png" | "jpg" | "jpeg")
+    )
+}
+
+/// 列出工作区下的文本与简历图片文件(相对路径),跳过重目录。
 #[tauri::command]
 fn fs_list(root: String) -> Result<Vec<String>, String> {
     let root_p = PathBuf::from(&root);
@@ -762,8 +783,8 @@ fn fs_list(root: String) -> Result<Vec<String>, String> {
             Err(_) => continue,
         };
         if entry.file_type().is_file() {
-            let n = entry.file_name().to_string_lossy().to_lowercase();
-            if n.ends_with(".md") || n.ends_with(".txt") || n.ends_with(".json") {
+            let n = entry.file_name().to_string_lossy();
+            if is_listable_workspace_file(&n) {
                 if let Ok(rel) = entry.path().strip_prefix(&root_p) {
                     out.push(rel.to_string_lossy().replace('\\', "/"));
                 }
@@ -822,6 +843,20 @@ fn fs_write_bytes(root: String, path: String, data: Vec<u8>) -> Result<(), Strin
 fn fs_read_bytes(root: String, path: String) -> Result<Vec<u8>, String> {
     let p = safe_join(&root, &path)?;
     std::fs::read(&p).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fs_list_includes_resume_images() {
+        assert!(is_listable_workspace_file("resume.md"));
+        assert!(is_listable_workspace_file("简历_1.png"));
+        assert!(is_listable_workspace_file("photo.JPG"));
+        assert!(is_listable_workspace_file("scan.jpeg"));
+        assert!(!is_listable_workspace_file("app.exe"));
+    }
 }
 
 /// 飞书授权登录(账号):开授权 WebView,拦截重定向拿 code,换 user_access_token。

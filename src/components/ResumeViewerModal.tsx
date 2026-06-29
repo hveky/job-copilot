@@ -209,9 +209,12 @@ export function ResumeViewerModal(props: { root: string; onClose: () => void; on
         <section className="min-w-0">
           <h3 className="m-0 mb-2 flex items-center gap-2 text-card-title font-semibold text-text">
             <FileText size={16} strokeWidth={1.75} className="text-accent-strong" />
-            Markdown 简历
+            AI 可读文本
             <span className="text-aux font-normal text-muted">resumes/resume.md</span>
           </h3>
+          <p className="hint mb-2">
+            PDF 抽取文字用于 AI 评分与生成，不作为视觉简历排版预览；视觉简历以右侧 PNG 页面图为准。
+          </p>
           {loading ? (
             <div className="hint">加载中…</div>
           ) : md.trim() ? (
@@ -231,7 +234,7 @@ export function ResumeViewerModal(props: { root: string; onClose: () => void; on
           <div className="mb-2 flex items-center gap-2">
             <h3 className="m-0 flex flex-1 items-center gap-2 text-card-title font-semibold text-text">
               <ImageIcon size={16} strokeWidth={1.75} className="text-accent-strong" />
-              简历图（PNG）
+              视觉简历图（PNG）
             </h3>
             <Button
               variant="primary"
@@ -294,8 +297,8 @@ export function ResumeViewerModal(props: { root: string; onClose: () => void; on
                       />
                     </button>
                     <div className="flex items-center gap-1">
-                      <span className="flex-1 truncate text-aux text-text-2" title={p.name}>
-                        {p.name}
+                      <span className="flex-1 truncate text-aux text-text-2" title={p.path}>
+                        {p.path}
                       </span>
                       {isDefault ? (
                         <StatusPill tone="accent" icon={<Star size={12} strokeWidth={2} />}>

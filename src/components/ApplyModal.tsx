@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { chat, GatewayError } from "../gateway/client";
+import { GatewayError } from "../gateway/client";
 import type { GatewayConfig } from "../gateway/types";
-import { greetingSystem, greetingUser } from "../prompts/templates";
+import { generateGreeting } from "../lib/greeting";
 import { bossApply, bossFetchJd, fsReadBytes, type BossJob } from "../lib/tauri";
 import { getDefaultResumePng } from "../state/resumeAssets";
 import { bumpDaily, getDaily, type ApplyRecord } from "../lib/ledger";
@@ -32,18 +32,13 @@ export function ApplyModal(props: {
 
   async function genGreeting(jd: string) {
     setGreeting("");
-    await chat(props.gateway, {
-      tier: "light",
-      system: greetingSystem(props.instruction),
-      messages: [
-        {
-          role: "user",
-          content: greetingUser({ job: props.jobLabel, jd, resume: props.resume }),
-        },
-      ],
-      maxTokens: 600,
-      onDelta: (t) => setGreeting((g) => g + t),
+    const g = await generateGreeting(props.gateway, {
+      jobLabel: props.jobLabel,
+      jd,
+      resume: props.resume,
+      instruction: props.instruction,
     });
+    setGreeting(g.trim());
   }
 
   async function load() {

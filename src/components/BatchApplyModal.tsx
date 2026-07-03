@@ -1,8 +1,8 @@
 import { useRef, useState } from "react";
-import { chat, GatewayError } from "../gateway/client";
+import { GatewayError } from "../gateway/client";
 import type { GatewayConfig } from "../gateway/types";
-import { greetingSystem, greetingUser } from "../prompts/templates";
-import { bossApply, type BossJob } from "../lib/tauri";
+import { generateGreeting } from "../lib/greeting";
+import { bossApply, bossFetchJd, type BossJob } from "../lib/tauri";
 import {
   bumpDaily,
   getDaily,
@@ -84,38 +84,48 @@ export function BatchApplyModal(props: {
   const pct = target > 0 ? Math.round((done / target) * 100) : 0;
 
   async function genAll() {
+    stopRef.current = false;
     setGenning(true);
     setNote("");
+    const todo = rows.filter(
+      (r) => r.include && r.status === "pending" && !r.greeting.trim(),
+    ).length;
+    let n = 0;
     for (let i = 0; i < rows.length; i++) {
+      if (stopRef.current) {
+        setNote("已停止生成。");
+        break;
+      }
       const r = rows[i];
       if (!r.include || r.status !== "pending" || r.greeting.trim()) continue;
+      n++;
       set(i, { error: undefined });
+      setNote(`抓取 JD + 生成招呼语 ${n}/${todo}…`);
       try {
-        let g = "";
-        await chat(props.gateway, {
-          tier: "light",
-          system: greetingSystem(props.instruction),
-          messages: [
-            {
-              role: "user",
-              content: greetingUser({
-                job: props.jobLabel,
-                jd: `岗位:${r.job.title}\n公司:${r.job.company}\n${r.job.tags}`,
-                resume: props.resume,
-              }),
-            },
-          ],
-          maxTokens: 500,
-          onDelta: (t) => {
-            g += t;
-            set(i, { greeting: g });
-          },
+        // 每条先抓完整 JD(比"岗位名+公司+标签"信息全太多);失败则回退兜底
+        let jd = "";
+        try {
+          const detail = await bossFetchJd(r.job.href);
+          jd = detail.jd || "";
+        } catch {
+          /* 抓取失败,下面用兜底 */
+        }
+        const fallbackJd = `岗位:${r.job.title}\n公司:${r.job.company}\n${r.job.tags}`;
+        const g = await generateGreeting(props.gateway, {
+          jobLabel: props.jobLabel,
+          jd: jd.trim() || fallbackJd,
+          resume: props.resume,
+          instruction: props.instruction,
         });
-        if (!g.trim()) set(i, { error: "生成为空,点「生成招呼语」重试" });
+        if (g.trim()) set(i, { greeting: g.trim() });
+        else set(i, { error: "生成为空,点「生成招呼语」重试" });
       } catch (e) {
         set(i, { error: e instanceof GatewayError ? e.message : String(e) });
       }
+      // 条间轻延迟,缓解频繁导航详情页的反爬风险
+      if (n < todo) await new Promise((res) => setTimeout(res, 800));
     }
+    setNote("");
     setGenning(false);
   }
 
@@ -294,6 +304,11 @@ export function BatchApplyModal(props: {
           <button className="ghost small" disabled={running || genning} onClick={genAll}>
             {genning ? "生成中…" : "生成招呼语"}
           </button>
+          {genning && (
+            <button className="ghost small" onClick={() => (stopRef.current = true)}>
+              停止生成
+            </button>
+          )}
           <span style={{ flex: 1 }} />
           {running ? (
             <button className="ghost" onClick={() => (stopRef.current = true)}>

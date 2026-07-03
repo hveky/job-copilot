@@ -133,17 +133,40 @@ export function recommendUser(args: { resume: string; wish?: string }): string {
   return `# 用户简历\n${resume}${wish}`;
 }
 
-/** BOSS 追发的定制招呼语(打招呼后第一句自我介绍)。 */
+/** 招呼语规则(生成/重写共用)。 */
+const GREETING_RULES = [
+  "greeting 要求:1-2 句,简洁凝练、开门见山,第一句就抛出最硬的价值——我做过什么、能做什么、具备哪些直接匹配这个岗位的能力。",
+  "自信、有锐度,适度拔高个人画像、带点自我营销的冲劲,让 HR 眼前一亮、愿意聊。",
+  "禁止:「您好」「你好」「我看到贵公司」「虽然…但是…」这类客套、铺垫、转折和闲聊;不要谦辞,不要解释求职动机。",
+  "紧扣岗位 JD 的核心要求命中,尽量用数字/成果说话。可直接发送。",
+  "不要虚构简历里没有的具体证书、职级或经历;但措辞可以自信有底气地呈现已有亮点。",
+];
+
+/**
+ * BOSS 追发的定制招呼语(结构化):先从简历选命中 JD 的硬亮点,再据此写招呼语。
+ * 严格输出 JSON: { "highlights": string[], "greeting": string }。
+ */
 export function greetingSystem(instruction?: string): string {
   return withInstruction(
     instruction,
     [
-      "你以求职者本人口吻,写一段在 BOSS 直聘上追发给 HR 的开场自我介绍。",
-      "要求:1-2 句,简洁凝练、开门见山,第一句就抛出最硬的价值——我做过什么、能做什么、具备哪些直接匹配这个岗位的能力。",
-      "自信、有锐度,适度拔高个人画像、带点自我营销的冲劲,让 HR 眼前一亮、愿意聊。",
-      "禁止:「您好」「我看到贵公司」「虽然…但是…」这类客套、铺垫、转折和闲聊;不要谦辞,不要解释求职动机。",
-      "紧扣岗位 JD 的核心要求命中,尽量用数字/成果说话。可直接发送,只输出这段话本身,不要引号或解释。",
-      "不要虚构简历里没有的具体证书、职级或经历;但措辞可以自信有底气地呈现已有亮点。",
+      "你以求职者本人口吻,为 BOSS 直聘上要追发给 HR 的开场自我介绍做准备。",
+      "先从「我的简历」里挑出 1-2 个最命中该岗位 JD 的硬亮点(highlights),再据此写最终招呼语(greeting)。",
+      ...GREETING_RULES,
+      '严格只输出 JSON,形如 {"highlights":["...","..."],"greeting":"最终那句招呼语"};不要 markdown 代码围栏,不要任何解释。',
+    ].join("\n"),
+  );
+}
+
+/** 招呼语重写:上一版违规,带原因重出 JSON。 */
+export function greetingRewriteSystem(reason: string, instruction?: string): string {
+  return withInstruction(
+    instruction,
+    [
+      "你在修订一段 BOSS 直聘追发给 HR 的开场招呼语。",
+      `上一版不合格,原因:${reason}。请针对性修正后重出。`,
+      ...GREETING_RULES,
+      '严格只输出 JSON,形如 {"highlights":["..."],"greeting":"修正后的招呼语"};不要代码围栏,不要解释。',
     ].join("\n"),
   );
 }

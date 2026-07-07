@@ -4,7 +4,7 @@ import type { GatewayConfig } from "../gateway/types";
 import { generateGreeting } from "../lib/greeting";
 import { bossApply, bossFetchJd, fsReadBytes, type BossJob } from "../lib/tauri";
 import { getDefaultResumePng } from "../state/resumeAssets";
-import { bumpDaily, getDaily, type ApplyRecord } from "../lib/ledger";
+import { getDailyCount, type ApplyRecord } from "../lib/ledger";
 import { canApplyToday, shouldRecordApplyResult } from "../lib/applySafety";
 
 type Phase = "loading" | "review" | "applying" | "done" | "error";
@@ -77,7 +77,7 @@ export function ApplyModal(props: {
       return;
     }
     setErr("");
-    if (!canApplyToday(getDaily(), props.dailyCap)) {
+    if (!canApplyToday(await getDailyCount(), props.dailyCap)) {
       setErr(`已达单日上限 ${props.dailyCap} 条,停止。`);
       return;
     }
@@ -88,7 +88,6 @@ export function ApplyModal(props: {
       setOk(r.ok);
       setPhase("done");
       if (shouldRecordApplyResult(r)) {
-        bumpDaily();
         props.onApplied({
           id: props.bossJob.id || props.bossJob.href,
           title: props.bossJob.title,

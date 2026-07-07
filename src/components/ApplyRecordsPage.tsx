@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { RefreshCw, Search, ExternalLink } from "lucide-react";
 import { Button } from "../ui";
-import { loadRecords } from "../lib/ledger";
-import { listApplyRecords, migrateApplyRecords, type ApplyRecordDb } from "../lib/jobStore";
+import { migrateLegacyLedger } from "../lib/ledger";
+import { listApplyRecords, type ApplyRecordDb } from "../lib/jobStore";
 
 type Filters = {
   company: string;
@@ -49,7 +49,7 @@ export function ApplyRecordsPage() {
     setLoading(true);
     setErr("");
     try {
-      await migrateApplyRecords(loadRecords());
+      await migrateLegacyLedger();
       setRecords(await listApplyRecords());
     } catch (e) {
       setErr(String(e));

@@ -14,7 +14,7 @@ import { DisclaimerModal } from "./components/DisclaimerModal";
 import { ProfilePage } from "./components/ProfilePage";
 import { ApplyRecordsPage } from "./components/ApplyRecordsPage";
 import { Tabs } from "./ui";
-import { getDaily, loadRecords } from "./lib/ledger";
+import { ledgerSummary, migrateLegacyLedger, type LedgerSummary } from "./lib/ledger";
 import {
   loadSettings,
   saveSettings,
@@ -116,8 +116,20 @@ export function App() {
   const [candidates, setCandidates] = useState(0);
   const [metricsKey, setMetricsKey] = useState(0);
 
-  const todayApplied = useMemo(() => getDaily(), [metricsKey]);
-  const totalApplied = useMemo(() => loadRecords().length, [metricsKey]);
+  const [ledger, setLedger] = useState<LedgerSummary>({ today: 0, total: 0 });
+  const { today: todayApplied, total: totalApplied } = ledger;
+
+  useEffect(() => {
+    (async () => {
+      try {
+        // 迁移幂等:旧键已删时是空操作
+        await migrateLegacyLedger();
+        setLedger(await ledgerSummary());
+      } catch {
+        /* ignore */
+      }
+    })();
+  }, [metricsKey]);
 
   async function refreshResume(r: string): Promise<number> {
     if (!r) {

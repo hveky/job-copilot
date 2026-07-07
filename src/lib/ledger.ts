@@ -1,46 +1,16 @@
-// 去重台账 + 单日计数(localStorage)。键用 encryptJobId(href 兜底)。
-const APPLIED_KEY = "qzc.applied.v1";
-const DAILY_KEY = "qzc.daily.v1";
+// 投递台账:以 SQLite apply_records 为唯一事实源(web 预览退化为 jobStore 的 localStorage 兜底)。
+// 去重、单日计数、飞书同步状态均从投递记录派生,不再维护独立的 localStorage 台账——
+// 避免两套存储漂移(清 WebView 缓存后去重失效/日限重置)。
+import {
+  addApplyRecord,
+  applyRecordFromLegacy,
+  listApplyRecords,
+  migrateApplyRecords,
+  type ApplyRecordDb,
+} from "./jobStore";
+import { isSameLocalDay } from "./localDate.ts";
 
-export function loadApplied(): Set<string> {
-  try {
-    const r = localStorage.getItem(APPLIED_KEY);
-    if (r) return new Set(JSON.parse(r) as string[]);
-  } catch {
-    /* ignore */
-  }
-  return new Set();
-}
-
-export function markApplied(id: string): void {
-  if (!id) return;
-  const s = loadApplied();
-  s.add(id);
-  localStorage.setItem(APPLIED_KEY, JSON.stringify([...s]));
-}
-
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-/** 今日已投数量。 */
-export function getDaily(): number {
-  try {
-    const r = JSON.parse(localStorage.getItem(DAILY_KEY) || "{}");
-    return r.date === today() ? r.count || 0 : 0;
-  } catch {
-    return 0;
-  }
-}
-
-/** 今日计数 +1,返回新值。 */
-export function bumpDaily(): number {
-  const c = getDaily() + 1;
-  localStorage.setItem(DAILY_KEY, JSON.stringify({ date: today(), count: c }));
-  return c;
-}
-
-// ===== 投递记录(供飞书同步) =====
+/** 投递记录(组件间传递 + 飞书同步用的旧口径,date 为毫秒时间戳)。 */
 export interface ApplyRecord {
   id: string;
   title: string;
@@ -56,35 +26,92 @@ export interface ApplyRecord {
   synced: boolean;
 }
 
-const RECORDS_KEY = "qzc.records.v1";
+// 旧版 localStorage 台账键:仅迁移时读取,迁移成功后删除。
+const LEGACY_RECORDS_KEY = "qzc.records.v1";
+const LEGACY_APPLIED_KEY = "qzc.applied.v1";
+const LEGACY_DAILY_KEY = "qzc.daily.v1";
 
-export function loadRecords(): ApplyRecord[] {
+/**
+ * 一次性迁移旧 localStorage 台账到记录库,随后删除旧键。幂等:旧键不存在时是空操作。
+ * 旧去重集合(qzc.applied.v1)不单独迁移——它只会由 addRecord 顺带写入,记录集是其超集。
+ */
+export async function migrateLegacyLedger(): Promise<number> {
+  let legacy: ApplyRecord[] = [];
   try {
-    const r = localStorage.getItem(RECORDS_KEY);
-    if (r) return JSON.parse(r) as ApplyRecord[];
+    const raw = localStorage.getItem(LEGACY_RECORDS_KEY);
+    if (raw) legacy = JSON.parse(raw) as ApplyRecord[];
   } catch {
-    /* ignore */
+    legacy = [];
   }
-  return [];
+  const migrated = legacy.length > 0 ? await migrateApplyRecords(legacy) : 0;
+  localStorage.removeItem(LEGACY_RECORDS_KEY);
+  localStorage.removeItem(LEGACY_APPLIED_KEY);
+  localStorage.removeItem(LEGACY_DAILY_KEY);
+  return migrated;
 }
 
-function saveRecords(rs: ApplyRecord[]) {
-  localStorage.setItem(RECORDS_KEY, JSON.stringify(rs));
+/** 记一条投递。 */
+export async function recordApply(rec: ApplyRecord): Promise<void> {
+  await addApplyRecord(applyRecordFromLegacy(rec));
 }
 
-/** 记一条投递(同时计入去重台账)。同 id 已存在则覆盖。 */
-export function addRecord(r: ApplyRecord): void {
-  markApplied(r.id);
-  const rs = loadRecords().filter((x) => x.id !== r.id);
-  rs.push(r);
-  saveRecords(rs);
+/** 去重键集合:已投记录的 id 与 href 的并集(卡片可能只有其一)。 */
+export async function getAppliedKeys(): Promise<Set<string>> {
+  const rows = await listApplyRecords();
+  const keys = new Set<string>();
+  for (const r of rows) {
+    if (r.id) keys.add(r.id);
+    if (r.href) keys.add(r.href);
+  }
+  return keys;
 }
 
-export function unsyncedRecords(): ApplyRecord[] {
-  return loadRecords().filter((r) => !r.synced);
+export interface LedgerSummary {
+  today: number;
+  total: number;
 }
 
-export function markSynced(ids: string[]): void {
+/** 今日(本地日历日)已投数 + 累计投递数。 */
+export async function ledgerSummary(now = Date.now()): Promise<LedgerSummary> {
+  const rows = await listApplyRecords();
+  return {
+    today: rows.filter((r) => isSameLocalDay(r.appliedAt, now)).length,
+    total: rows.length,
+  };
+}
+
+/** 今日已投数量(本地日历日)。 */
+export async function getDailyCount(): Promise<number> {
+  return (await ledgerSummary()).today;
+}
+
+function dbToLegacy(r: ApplyRecordDb): ApplyRecord {
+  return {
+    id: r.id,
+    title: r.title,
+    company: r.company,
+    city: r.city,
+    region: r.region,
+    salary: r.salary,
+    track: r.track,
+    direction: r.direction,
+    href: r.href,
+    greeting: r.greeting,
+    date: r.appliedAt,
+    synced: r.synced,
+  };
+}
+
+export async function unsyncedRecords(): Promise<ApplyRecord[]> {
+  return (await listApplyRecords()).filter((r) => !r.synced).map(dbToLegacy);
+}
+
+export async function markSynced(ids: string[]): Promise<void> {
   const set = new Set(ids);
-  saveRecords(loadRecords().map((r) => (set.has(r.id) ? { ...r, synced: true } : r)));
+  const rows = await listApplyRecords();
+  for (const r of rows) {
+    if (set.has(r.id) && !r.synced) {
+      await addApplyRecord({ ...r, synced: true });
+    }
+  }
 }

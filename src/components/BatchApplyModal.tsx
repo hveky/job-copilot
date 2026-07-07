@@ -1,12 +1,11 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { GatewayError } from "../gateway/client";
 import type { GatewayConfig } from "../gateway/types";
 import { generateGreeting } from "../lib/greeting";
 import { bossApply, bossFetchJd, type BossJob } from "../lib/tauri";
 import {
-  bumpDaily,
-  getDaily,
-  loadApplied,
+  getAppliedKeys,
+  getDailyCount,
   type ApplyRecord,
 } from "../lib/ledger";
 import {
@@ -46,19 +45,31 @@ export function BatchApplyModal(props: {
   onClose: () => void;
   onApplied: (rec: ApplyRecord) => void;
 }) {
-  const [rows, setRows] = useState<Row[]>(() => {
-    const applied = loadApplied();
-    return props.jobs.map((j) => {
-      const dup = applied.has(j.id || j.href);
-      return {
-        job: j,
-        greeting: "",
-        include: !dup,
-        status: dup ? ("skipped" as RowStatus) : ("pending" as RowStatus),
-        error: dup ? "已投过" : undefined,
-      };
-    });
-  });
+  const [rows, setRows] = useState<Row[]>(() =>
+    props.jobs.map((j) => ({
+      job: j,
+      greeting: "",
+      include: true,
+      status: "pending" as RowStatus,
+    })),
+  );
+  const [daily, setDaily] = useState(0);
+
+  // 去重台账与今日计数来自记录库(异步),挂载后标记已投过的行
+  useEffect(() => {
+    getAppliedKeys()
+      .then((applied) => {
+        setRows((rs) =>
+          rs.map((r) =>
+            r.status === "pending" && applied.has(r.job.id || r.job.href)
+              ? { ...r, include: false, status: "skipped" as RowStatus, error: "已投过" }
+              : r,
+          ),
+        );
+      })
+      .catch(() => {});
+    getDailyCount().then(setDaily).catch(() => {});
+  }, []);
   const [genning, setGenning] = useState(false);
   const [running, setRunning] = useState(false);
   const [minimized, setMinimized] = useState(false);
@@ -142,6 +153,14 @@ export function BatchApplyModal(props: {
     stopRef.current = false;
     setRunning(true);
     setNote("");
+    // 起跑时读一次今日已投,循环内本地累加(记录写入是异步的,读库会滞后)
+    let dailyNow = daily;
+    try {
+      dailyNow = await getDailyCount();
+      setDaily(dailyNow);
+    } catch {
+      /* 读失败沿用挂载时的值 */
+    }
     for (let i = 0; i < rows.length; i++) {
       if (stopRef.current) {
         setNote("已手动停止。");
@@ -153,7 +172,7 @@ export function BatchApplyModal(props: {
         set(i, { status: "skipped", error: "无招呼语" });
         continue;
       }
-      if (!canApplyToday(getDaily(), safety.dailyCap)) {
+      if (!canApplyToday(dailyNow, safety.dailyCap)) {
         setNote(`已达单日上限 ${safety.dailyCap} 条,停止。`);
         break;
       }
@@ -161,7 +180,8 @@ export function BatchApplyModal(props: {
       try {
         const res = await bossApply(r.job.href, r.greeting.trim());
         if (shouldRecordApplyResult(res)) {
-          bumpDaily();
+          dailyNow += 1;
+          setDaily(dailyNow);
           props.onApplied({
             id: r.job.id || r.job.href,
             title: r.job.title,
@@ -246,7 +266,7 @@ export function BatchApplyModal(props: {
         </div>
         <p className="hint" style={{ marginTop: 4 }}>
           岗位「{props.jobLabel}」· 共 {rows.length} 条 · 待投 {includedPending} ·
-          已投 {sentCount} · 今日已投 {getDaily()}/{safety.dailyCap} ·
+          已投 {sentCount} · 今日已投 {daily}/{safety.dailyCap} ·
           间隔 {safety.delayMin}-{safety.delayMax}s 随机
         </p>
         <div className="row" style={{ gap: 8, marginTop: 6 }}>

@@ -30,7 +30,7 @@ import { cityCode } from "../data/cities";
 import { salaryMatches } from "../data/salaries";
 import { ApplyModal } from "./ApplyModal";
 import { BatchApplyModal } from "./BatchApplyModal";
-import { addRecord, loadApplied, markSynced, unsyncedRecords, type ApplyRecord } from "../lib/ledger";
+import { getAppliedKeys, markSynced, recordApply, unsyncedRecords, type ApplyRecord } from "../lib/ledger";
 import { buildFeishuRecords } from "../lib/feishu";
 import type { GatewayConfig, Tier } from "../gateway/types";
 import { chat, GatewayError } from "../gateway/client";
@@ -38,8 +38,6 @@ import { contentPackSystem, contentPackUser } from "../prompts/templates";
 import { normalizeApplySafety } from "../lib/applySafety";
 import type { ApplyTaskStatus, ContentTaskStatus } from "./TaskStatusBar";
 import {
-  addApplyRecord,
-  applyRecordFromLegacy,
   listCandidateJobs,
   normalizeCandidateJob,
   updateCandidateJd,
@@ -190,7 +188,7 @@ export function BossPanelV2(props: {
   const [generatingId, setGeneratingId] = useState("");
   const [applyJob, setApplyJob] = useState<BossJob | null>(null);
   const [showBatch, setShowBatch] = useState(false);
-  const [appliedIds, setAppliedIds] = useState<Set<string>>(() => loadApplied());
+  const [appliedIds, setAppliedIds] = useState<Set<string>>(() => new Set());
   const [replies, setReplies] = useState<BossReplies | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -227,6 +225,7 @@ export function BossPanelV2(props: {
 
   useEffect(() => {
     listCandidateJobs().then((rows) => setJobs(rows)).catch((e) => setErr(String(e)));
+    getAppliedKeys().then(setAppliedIds).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -289,10 +288,14 @@ export function BossPanelV2(props: {
       region: rec.region || matched?.region || matched?.area || "",
       direction: rec.direction || matched?.direction || inferDirection(rec.title, rec.track),
     };
-    addRecord(rich);
-    void addApplyRecord(applyRecordFromLegacy(rich)).catch((e) => setErr(String(e)));
-    setAppliedIds((s) => new Set(s).add(rich.id));
-    props.onApplied?.();
+    setAppliedIds((s) => {
+      const next = new Set(s).add(rich.id);
+      if (rich.href) next.add(rich.href);
+      return next;
+    });
+    void recordApply(rich)
+      .catch((e) => setErr(`投递记录保存失败:${String(e)}`))
+      .finally(() => props.onApplied?.());
     props.onApplyStatus?.({ state: "done", done: 1, total: 1, message: "已投递" });
   }
 
@@ -302,15 +305,15 @@ export function BossPanelV2(props: {
       setSyncNote("请先在设置中完成飞书授权，或填写 app_id / app_secret。");
       return;
     }
-    const recs = unsyncedRecords();
-    if (recs.length === 0) {
-      setSyncNote("没有待同步的投递记录。");
-      return;
-    }
     setSyncing(true);
     try {
+      const recs = await unsyncedRecords();
+      if (recs.length === 0) {
+        setSyncNote("没有待同步的投递记录。");
+        return;
+      }
       const n = await feishuSync(props.feishuAppId, props.feishuAppSecret, props.feishuUserToken, props.feishuBaseToken, props.feishuTableId, buildFeishuRecords(recs));
-      markSynced(recs.map((r) => r.id));
+      await markSynced(recs.map((r) => r.id));
       setSyncNote(`已同步 ${n} 条到飞书多维表格。`);
     } catch (e) {
       setSyncNote("同步失败:" + String(e));

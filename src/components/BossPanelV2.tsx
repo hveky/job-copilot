@@ -31,7 +31,7 @@ import { salaryMatches } from "../data/salaries";
 import { ApplyModal } from "./ApplyModal";
 import { BatchApplyModal } from "./BatchApplyModal";
 import { getAppliedKeys, markSynced, recordApply, unsyncedRecords, type ApplyRecord } from "../lib/ledger";
-import { buildFeishuRecords } from "../lib/feishu";
+import { buildFeishuRecords, ensureFeishuUserToken, type FeishuTokenSettingsPatch } from "../lib/feishu";
 import type { GatewayConfig, Tier } from "../gateway/types";
 import { chat, GatewayError } from "../gateway/client";
 import { contentPackSystem, contentPackUser } from "../prompts/templates";
@@ -164,8 +164,11 @@ export function BossPanelV2(props: {
   feishuAppId: string;
   feishuAppSecret: string;
   feishuUserToken: string;
+  feishuRefreshToken: string;
+  feishuTokenExpireAt: number;
   feishuBaseToken: string;
   feishuTableId: string;
+  onFeishuTokens?: (patch: FeishuTokenSettingsPatch) => void;
   root: string;
   inboxRefreshKey: number;
   contentTier: Tier;
@@ -312,7 +315,18 @@ export function BossPanelV2(props: {
         setSyncNote("没有待同步的投递记录。");
         return;
       }
-      const n = await feishuSync(props.feishuAppId, props.feishuAppSecret, props.feishuUserToken, props.feishuBaseToken, props.feishuTableId, buildFeishuRecords(recs));
+      // 快过期先静默续期(新 token 组回传 App 持久化)
+      const userToken = await ensureFeishuUserToken(
+        {
+          userToken: props.feishuUserToken,
+          refreshToken: props.feishuRefreshToken,
+          expireAt: props.feishuTokenExpireAt,
+        },
+        props.feishuAppId,
+        props.feishuAppSecret,
+        props.onFeishuTokens,
+      );
+      const n = await feishuSync(props.feishuAppId, props.feishuAppSecret, userToken, props.feishuBaseToken, props.feishuTableId, buildFeishuRecords(recs));
       await markSynced(recs.map((r) => r.id));
       setSyncNote(`已同步 ${n} 条到飞书多维表格。`);
     } catch (e) {

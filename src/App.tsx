@@ -314,8 +314,11 @@ export function App() {
                     feishuAppId={settings.feishuAppId || BUILTIN_FEISHU.clientId}
                     feishuAppSecret={settings.feishuAppSecret || BUILTIN_FEISHU.clientSecret}
                     feishuUserToken={settings.feishuUserToken}
+                    feishuRefreshToken={settings.feishuRefreshToken}
+                    feishuTokenExpireAt={settings.feishuTokenExpireAt}
                     feishuBaseToken={settings.feishuBaseToken}
                     feishuTableId={settings.feishuTableId}
+                    onFeishuTokens={patch}
                     root={root}
                     inboxRefreshKey={inboxKey}
                     contentTier={contentTier}

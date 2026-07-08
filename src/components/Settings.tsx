@@ -15,6 +15,7 @@ import type { Settings } from "../state/settings";
 import { toGatewayConfig } from "../state/settings";
 import { chat } from "../gateway/client";
 import { feishuOAuth } from "../lib/tauri";
+import { feishuTokenPatch } from "../lib/feishu";
 import { BUILTIN_FEISHU, hasBuiltinFeishu } from "../config/feishu";
 import { hasBuiltinDs } from "../config/deepseek";
 import { normalizeApplySafety } from "../lib/applySafety";
@@ -63,8 +64,8 @@ export function SettingsModal(props: {
     setAuthNote("");
     setAuthing(true);
     try {
-      const token = await feishuOAuth(cid, csec, redir);
-      set("feishuUserToken", token);
+      const tokens = await feishuOAuth(cid, csec, redir);
+      setS((p) => ({ ...p, ...feishuTokenPatch(tokens) }));
       setAuthNote("✓ 已授权,记得点保存设置。");
     } catch (e) {
       setAuthNote("授权失败:" + String(e));
@@ -304,7 +305,14 @@ export function SettingsModal(props: {
                   <Button
                     variant="danger"
                     size="sm"
-                    onClick={() => set("feishuUserToken", "")}
+                    onClick={() =>
+                      setS((p) => ({
+                        ...p,
+                        feishuUserToken: "",
+                        feishuRefreshToken: "",
+                        feishuTokenExpireAt: 0,
+                      }))
+                    }
                   >
                     清除授权
                   </Button>

@@ -28,6 +28,8 @@ export interface Settings {
   feishuTableId: string; // 表 id
   feishuRedirectUri: string; // OAuth 重定向(需在飞书应用后台登记)
   feishuUserToken: string; // 飞书账号授权后的 user_access_token
+  feishuRefreshToken: string; // 静默续期用(每次续期轮换)
+  feishuTokenExpireAt: number; // user_access_token 过期时间(ms);0=未知(旧版授权)
   bridgeToken: string; // 与 BOSS 扩展约定的入站推送令牌(X-Copilot-Token)
   disclaimerAccepted: boolean; // 已确认首次免责声明
 }
@@ -67,6 +69,8 @@ export const DEFAULT_SETTINGS: Settings = {
   feishuTableId: "tblUzqF9C2Leljof",
   feishuRedirectUri: "http://localhost:14520/feishu/callback",
   feishuUserToken: "",
+  feishuRefreshToken: "",
+  feishuTokenExpireAt: 0,
   bridgeToken: "",
   disclaimerAccepted: false,
 };

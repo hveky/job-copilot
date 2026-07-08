@@ -859,15 +859,63 @@ mod tests {
     }
 }
 
+/// 飞书 OAuth token 组:access_token 约 2 小时过期,refresh_token 用于静默续期。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FeishuTokens {
+    access_token: String,
+    refresh_token: String,
+    /// access_token 剩余有效期(秒)
+    expires_in: i64,
+}
+
+/// 调飞书 v2 oauth token 端点(授权码换 token / refresh_token 续期共用)。
+async fn feishu_token_request(body: serde_json::Value) -> Result<FeishuTokens, String> {
+    let j = reqwest::Client::new()
+        .post("https://open.feishu.cn/open-apis/authen/v2/oauth/token")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())?;
+    let access = j["access_token"]
+        .as_str()
+        .ok_or_else(|| format!("换取 user token 失败: {}", j))?;
+    Ok(FeishuTokens {
+        access_token: access.to_string(),
+        // scope 缺 offline_access 时飞书不发 refresh_token,置空退化为到期重新授权
+        refresh_token: j["refresh_token"].as_str().unwrap_or_default().to_string(),
+        expires_in: j["expires_in"].as_i64().unwrap_or(0),
+    })
+}
+
+/// 用 refresh_token 静默续期 user_access_token(refresh_token 会轮换,需保存返回的新值)。
+#[tauri::command]
+async fn feishu_refresh(
+    client_id: String,
+    client_secret: String,
+    refresh_token: String,
+) -> Result<FeishuTokens, String> {
+    feishu_token_request(serde_json::json!({
+        "grant_type": "refresh_token",
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "refresh_token": refresh_token
+    }))
+    .await
+}
+
 /// 飞书授权登录(账号):开授权 WebView,拦截重定向拿 code,换 user_access_token。
-/// 返回 access_token(以用户身份写表,无需把表分享给机器人)。
+/// 返回 token 组(以用户身份写表,无需把表分享给机器人)。
 #[tauri::command]
 async fn feishu_oauth(
     app: tauri::AppHandle,
     client_id: String,
     client_secret: String,
     redirect_uri: String,
-) -> Result<String, String> {
+) -> Result<FeishuTokens, String> {
     let auth_url = format!(
         "https://accounts.feishu.cn/open-apis/authen/v1/authorize?client_id={}&redirect_uri={}&scope={}&state=qzc",
         urlencoding::encode(&client_id),
@@ -912,26 +960,14 @@ async fn feishu_oauth(
         let _ = w.close();
     }
 
-    let client = reqwest::Client::new();
-    let j = client
-        .post("https://open.feishu.cn/open-apis/authen/v2/oauth/token")
-        .json(&serde_json::json!({
-            "grant_type": "authorization_code",
-            "client_id": client_id,
-            "client_secret": client_secret,
-            "code": code,
-            "redirect_uri": redirect_uri
-        }))
-        .send()
-        .await
-        .map_err(|e| e.to_string())?
-        .json::<serde_json::Value>()
-        .await
-        .map_err(|e| e.to_string())?;
-    j["access_token"]
-        .as_str()
-        .map(|s| s.to_string())
-        .ok_or_else(|| format!("换取 user token 失败: {}", j))
+    feishu_token_request(serde_json::json!({
+        "grant_type": "authorization_code",
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "code": code,
+        "redirect_uri": redirect_uri
+    }))
+    .await
 }
 
 /// 飞书多维表格写入。user_token 非空则以用户身份写;否则用 app_id/secret 走应用身份。
@@ -1368,7 +1404,8 @@ pub fn run() {
             data_root,
             bridge_token,
             feishu_sync,
-            feishu_oauth
+            feishu_oauth,
+            feishu_refresh
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

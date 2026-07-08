@@ -139,14 +139,31 @@ export async function fsReadBytes(root: string, path: string): Promise<number[]>
   return invoke<number[]>("fs_read_bytes", { root, path });
 }
 
-/** 飞书账号授权(OAuth),返回 user_access_token。 */
+/** 飞书 OAuth token 组。accessToken 约 2 小时过期,refreshToken 用于静默续期(每次续期会轮换)。 */
+export interface FeishuTokens {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number; // 秒
+}
+
+/** 飞书账号授权(OAuth),返回 token 组。 */
 export async function feishuOAuth(
   clientId: string,
   clientSecret: string,
   redirectUri: string,
-): Promise<string> {
+): Promise<FeishuTokens> {
   const { invoke } = await import("@tauri-apps/api/core");
-  return invoke<string>("feishu_oauth", { clientId, clientSecret, redirectUri });
+  return invoke<FeishuTokens>("feishu_oauth", { clientId, clientSecret, redirectUri });
+}
+
+/** 用 refresh_token 静默续期 user_access_token。 */
+export async function feishuRefresh(
+  clientId: string,
+  clientSecret: string,
+  refreshToken: string,
+): Promise<FeishuTokens> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<FeishuTokens>("feishu_refresh", { clientId, clientSecret, refreshToken });
 }
 
 /** 同步记录到飞书多维表格。userToken 非空则以账号身份写。返回写入条数。 */

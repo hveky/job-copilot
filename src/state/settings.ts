@@ -8,7 +8,6 @@ export interface Settings {
   dsBaseUrl: string;
   modelFlash: string;
   modelPro: string;
-  resume: string; // 用户简历全文 / 要点
   instruction: string; // 主控指令(CLAUDE.md 式),注入每次 AI 调用的 system 前缀
   targetJobs: string[]; // 用户确认的目标岗位关键词集合
   activeJob: string; // 当前用于定位的岗位(targetJobs 之一)
@@ -49,7 +48,6 @@ export const DEFAULT_SETTINGS: Settings = {
   dsBaseUrl: "https://api.deepseek.com/anthropic", // 绝对端点;桌面经 Rust 发出免 CORS,web dev 由客户端改写回 /api/ds 代理
   modelFlash: "deepseek-v4-flash",
   modelPro: "deepseek-v4-pro",
-  resume: "",
   instruction: "",
   targetJobs: [],
   activeJob: "",

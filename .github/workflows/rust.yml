@@ -1,0 +1,21 @@
+# Rust 侧检查:仅 src-tauri 变更时跑(cargo check 较重)。
+# 用 windows-latest:与发布目标一致,且 Tauri 在 Windows 上无需额外系统依赖。
+name: Rust
+
+on:
+  push:
+    branches: [main]
+    paths: ["src-tauri/**"]
+  pull_request:
+    paths: ["src-tauri/**"]
+
+jobs:
+  check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: cargo check --manifest-path src-tauri/Cargo.toml
